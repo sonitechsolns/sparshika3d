@@ -204,66 +204,65 @@ def build_front_bezel(mats):
         latch.parent = bay
         indicator.parent = bay
 
-    # 3. Hex Mesh Overlay (Large structural honeycomb)
-    import bmesh
-    mesh_data = bpy.data.meshes.new("hex_base")
-    hex_obj = bpy.data.objects.new("front_hex_mesh", mesh_data)
-    bpy.context.collection.objects.link(hex_obj)
-    
+    # 3. Hex Mesh Overlay — a solid grille panel with hexagonal holes cut out
+    #    via a boolean. This yields clean, uniform struts. The old approach tiled
+    #    individual hex *rings* whose shared edges overlapped and looked distorted.
+    R = 0.015              # honeycomb lattice radius (center spacing = sqrt(3)*R)
+    r_hole = 0.011         # hole circumradius; strut width = sqrt(3)*(R - r_hole)
+    w = math.sqrt(3) * R   # horizontal center spacing
+    row_h = 1.5 * R        # vertical row spacing (rows offset by w/2)
+    panel_t = 0.006
+    panel_y = bezel_y - 0.013
+
+    # Solid grille panel spanning the bay area between the ears.
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    panel = bpy.context.active_object
+    panel.name = "front_hex_mesh"
+    panel.data.name = panel.name
+    panel.scale = (bay_area_w, panel_t, HEIGHT - 0.004)
+    panel.location = (0, panel_y, 0)
+
+    # Build the full grid of pointy-top hexagonal hole cutters in one bmesh.
     bm = bmesh.new()
-    r = 0.015 # 15mm radius for chunky hexagons
-    w = math.sqrt(3) * r
-    thickness = 0.005
-    strut = 0.003
-    
-    def add_hex_ring(cx, cz):
-        outer_verts = []
-        inner_verts = []
+    ncol = int(bay_area_w / w) + 4
+    nrow = int(HEIGHT / row_h) + 4
+    x0 = -(ncol - 1) * w / 2
+    z0 = -(nrow - 1) * row_h / 2
+
+    def add_hex_prism(cx, cz):
+        top = [bm.verts.new((cx + math.cos(math.radians(30 + i * 60)) * r_hole,
+                              panel_t,
+                              cz + math.sin(math.radians(30 + i * 60)) * r_hole))
+               for i in range(6)]
+        bot = [bm.verts.new((v.co.x, -panel_t, v.co.z)) for v in top]
+        bm.faces.new(top)
+        bm.faces.new(list(reversed(bot)))
         for i in range(6):
-            angle = i * (math.pi / 3) + (math.pi / 6)
-            x = cx + math.cos(angle) * r
-            z = cz + math.sin(angle) * r
-            outer_verts.append(bm.verts.new((x, 0, z)))
-            
-            x_in = cx + math.cos(angle) * (r - strut)
-            z_in = cz + math.sin(angle) * (r - strut)
-            inner_verts.append(bm.verts.new((x_in, 0, z_in)))
-            
-        for i in range(6):
-            next_i = (i + 1) % 6
-            bm.faces.new((outer_verts[i], outer_verts[next_i], inner_verts[next_i], inner_verts[i]))
-            
-    add_hex_ring(0, 0)
-    add_hex_ring(w/2, 1.5 * r)
-    
-    bm.to_mesh(mesh_data)
+            j = (i + 1) % 6
+            bm.faces.new((top[i], top[j], bot[j], bot[i]))
+
+    for rz in range(nrow):
+        cz = z0 + rz * row_h
+        x_off = (w / 2) if (rz % 2) else 0.0   # offset every other row → honeycomb
+        for cxi in range(ncol):
+            add_hex_prism(x0 + x_off + cxi * w, cz)
+
+    cutter_mesh = bpy.data.meshes.new("hex_cutters")
+    bm.to_mesh(cutter_mesh)
     bm.free()
-    
-    solidify = hex_obj.modifiers.new(name="Solidify", type='SOLIDIFY')
-    solidify.thickness = thickness
-    
-    array_x = hex_obj.modifiers.new(name="ArrayX", type='ARRAY')
-    array_x.use_relative_offset = False
-    array_x.use_constant_offset = True
-    array_x.constant_offset_displace = (w, 0, 0)
-    array_x.count = int(bay_area_w / w) + 2
-    
-    array_z = hex_obj.modifiers.new(name="ArrayZ", type='ARRAY')
-    array_z.use_relative_offset = False
-    array_z.use_constant_offset = True
-    array_z.constant_offset_displace = (0, 0, 3 * r)
-    array_z.count = int(HEIGHT / (3 * r)) + 2
-    
-    total_w = array_x.count * w
-    total_h = array_z.count * 3 * r
-    # Position in front of the drives
-    hex_obj.location = (-total_w/2, bezel_y - 0.015, -total_h/2)
-    hex_obj.data.materials.append(mats['bezel'])
-    
-    bpy.context.view_layer.objects.active = hex_obj
-    bpy.ops.object.modifier_apply(modifier="Solidify")
-    bpy.ops.object.modifier_apply(modifier="ArrayX")
-    bpy.ops.object.modifier_apply(modifier="ArrayZ")
+    cutter = bpy.data.objects.new("hex_cutters", cutter_mesh)
+    bpy.context.collection.objects.link(cutter)
+    cutter.location = (0, panel_y, 0)
+
+    # Cut the holes out of the panel.
+    bpy.context.view_layer.objects.active = panel
+    boolean = panel.modifiers.new(name="holes", type='BOOLEAN')
+    boolean.operation = 'DIFFERENCE'
+    boolean.solver = 'EXACT'
+    boolean.object = cutter
+    bpy.ops.object.modifier_apply(modifier="holes")
+    bpy.data.objects.remove(cutter, do_unlink=True)
+    panel.data.materials.append(mats['bezel'])
     
     # 4. Center Dell badge — recessed dark backing disc + a TEXTURE DECAL.
     #    No 3D text: the wordmark is a baked image on a plane (spec requirement).

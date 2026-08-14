@@ -52,6 +52,35 @@ const PART_IDENTITY = {
     logo: '/nvidia_logo.svg',
     partNumber: '900-1G133-2530-000',
     serialNumber: '3080TI-0042-A17'
+  },
+  // Dell R760 internal components (revealed when the cover is opened).
+  'CPU-R760-01': {
+    brand: 'Intel',
+    model: 'Xeon Platinum 8480+ (Socket 1)',
+    logo: '/favicon.svg',
+    partNumber: 'SRM7G-8480',
+    serialNumber: 'CPU01-R760-8F2A'
+  },
+  'CPU-R760-02': {
+    brand: 'Intel',
+    model: 'Xeon Platinum 8480+ (Socket 2)',
+    logo: '/favicon.svg',
+    partNumber: 'SRM7G-8480',
+    serialNumber: 'CPU02-R760-9B7C'
+  },
+  'RAM-R760-01': {
+    brand: 'Micron',
+    model: '64GB DDR5-4800 RDIMM',
+    logo: '/favicon.svg',
+    partNumber: 'MTC40F2046S1RC48',
+    serialNumber: 'RAM01-R760-3E11'
+  },
+  'DRIVE-R760-01': {
+    brand: 'Dell',
+    model: '1.92TB NVMe SSD',
+    logo: '/dell_logo.png',
+    partNumber: '0M7X8N',
+    serialNumber: 'DRV01-R760-7A44'
   }
 };
 

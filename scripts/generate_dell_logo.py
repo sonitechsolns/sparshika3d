@@ -1,6 +1,12 @@
 """Generate a Dell wordmark decal texture (transparent PNG) for the R760 bezel.
 Baked as a texture/decal — NOT 3D text — per the rebuild spec's branding rule.
-Run with the venv python that has Pillow: ./venv/bin/python scripts/generate_dell_logo.py
+
+Renders "DELL" as a single clean, evenly-spaced bold wordmark on the navy
+roundel. (The earlier version rotated the "E" per-letter, which dipped below the
+baseline and overlapped the next letter — it read as broken.)
+
+Run with the venv python that has Pillow:
+    ./venv/bin/python scripts/generate_dell_logo.py
 """
 from PIL import Image, ImageDraw, ImageFont
 import os
@@ -9,37 +15,33 @@ OUT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "public", "dell_l
 
 W, H = 512, 512
 img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-
-# Dell's roundel: dark navy circle with white wordmark.
 draw = ImageDraw.Draw(img)
+
+# Navy roundel with a lighter rim.
 cx, cy, r = W // 2, H // 2, 235
-draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(0, 40, 85, 255))          # navy disc
+draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(0, 40, 85, 255))
 draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(120, 170, 220, 255), width=6)
 
-font_path = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
 try:
-    font = ImageFont.truetype(font_path, 150)
+    font = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial Bold.ttf", 150)
 except IOError:
     font = ImageFont.load_default()
 
-# Draw D E L L, with the E tilted ~ -18deg (Dell's signature).
-letters = ["D", "E", "L", "L"]
-# measure widths
-widths = [draw.textbbox((0, 0), ch, font=font)[2] for ch in letters]
-gap = 6
-total = sum(widths) + gap * (len(letters) - 1)
-x = cx - total // 2
-baseline_y = cy - 95
-for ch, w in zip(letters, widths):
-    if ch == "E":
-        # render tilted E on its own layer, then paste
-        tile = Image.new("RGBA", (w + 40, 220), (0, 0, 0, 0))
-        ImageDraw.Draw(tile).text((20, 0), ch, font=font, fill=(255, 255, 255, 255))
-        tile = tile.rotate(18, expand=True, resample=Image.BICUBIC)
-        img.alpha_composite(tile, (x - 20, baseline_y - 12))
-    else:
-        draw.text((x, baseline_y), ch, font=font, fill=(255, 255, 255, 255))
-    x += w + gap
+# Draw "DELL" as one string with tracking, centred both axes — no per-letter
+# transforms, so every glyph (the E included) sits cleanly on the baseline.
+text = "DELL"
+tracking = 8  # extra px between letters
+widths = [draw.textbbox((0, 0), ch, font=font)[2] for ch in text]
+total_w = sum(widths) + tracking * (len(text) - 1)
+
+# Vertical centring using the font's ascent/descent for a true optical middle.
+ascent, descent = font.getmetrics()
+y = cy - (ascent + descent) // 2
+
+x = cx - total_w // 2
+for ch, w in zip(text, widths):
+    draw.text((x, y), ch, font=font, fill=(255, 255, 255, 255))
+    x += w + tracking
 
 img.save(OUT)
 print("Wrote", OUT, img.size)
