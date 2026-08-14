@@ -1,0 +1,15 @@
+# Dependencies & build output
+node_modules/
+dist/
+
+# Python venv used by the Blender asset scripts
+venv/
+__pycache__/
+*.pyc
+
+# Local env overrides (committed: .env.production, .env.example)
+.env.local
+.env.*.local
+
+# OS
+.DS_Store

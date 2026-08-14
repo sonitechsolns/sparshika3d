@@ -1,0 +1,263 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg-dark: #0a0b10;
+  --bg-panel: rgba(22, 24, 32, 0.75);
+  --bg-panel-solid: #161820;
+  --text-main: #f3f4f6;
+  --text-muted: #9ca3af;
+  --accent: #4f46e5;
+  --accent-glow: rgba(79, 70, 229, 0.5);
+  --border: rgba(255, 255, 255, 0.1);
+  --success: #10b981;
+  --danger: #ef4444;
+  --danger-bg: rgba(239, 68, 68, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: 1.5rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  z-index: 10;
+  /* Header is click-through so empty areas don't block canvas orbiting... */
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(10, 11, 16, 0.9) 0%, rgba(10, 11, 16, 0) 100%);
+}
+
+/* ...but its interactive controls must still receive clicks. Without this the
+   buttons inherit pointer-events:none and appear "dead" to a real mouse. */
+.app-header button {
+  pointer-events: auto;
+}
+
+.logo-icon {
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px var(--accent-glow));
+}
+
+.app-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.badge {
+  background: var(--accent);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.canvas-container {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.instructions-overlay {
+  position: absolute;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 1rem 2rem;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  display: flex;
+  gap: 2rem;
+  pointer-events: none;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.instructions-overlay strong {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+/* 3D Overlay Panels */
+.hover-popup {
+  background: var(--bg-panel);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  width: 220px;
+  pointer-events: none;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  transform: translate3d(0, 0, 0); /* Force HW accel */
+  animation: fadeUp 0.2s ease-out forwards;
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.popup-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.5));
+}
+
+.popup-header h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.popup-body p {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.popup-body strong {
+  color: var(--text-main);
+}
+
+.detail-panel {
+  background: var(--bg-panel);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  width: 320px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  pointer-events: auto;
+}
+
+.panel-header {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 16px 16px 0 0;
+}
+
+.panel-header h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.25rem;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.panel-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.data-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.data-row span:first-child {
+  color: var(--text-muted);
+}
+
+.data-row span:last-child {
+  font-weight: 500;
+}
+
+.status {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status.optimal {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status.critical {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  animation: pulse-danger 2s infinite;
+}
+
+/* Animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.9) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes pulse-danger {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}

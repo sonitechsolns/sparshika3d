@@ -1,0 +1,128 @@
+import React, { useRef, useState, useMemo, useEffect } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { useGLTF, Html } from '@react-three/drei';
+import { getTelemetry, getMetadata } from '../data/telemetry';
+import { computeLocalSpinAxis } from '../utils/fanAxis';
+
+export function GPU({ position, partId }) {
+  const group = useRef();
+  const { scene } = useGLTF('/gpu_pilot.glb');
+
+  // Collect the fan rotor groups once. Each `Fan_N_Rotor` node parents the
+  // hub + all blade orbits, so spinning the rotor spins the whole fan. The
+  // static grille (`Fan_N_Housing`) lives outside the rotor and stays put.
+  const fanRotors = useMemo(() => {
+    const rotors = [];
+    scene.traverse((o) => {
+      if (/^Fan_\d+_Rotor$/.test(o.name)) {
+        rotors.push({ obj: o, axis: computeLocalSpinAxis(o) });
+      }
+    });
+    return rotors;
+  }, [scene]);
+
+  const [hovered, setHovered] = useState(false);
+  const [clicked, setClicked] = useState(false);
+  
+  // Memoize metadata so it doesn't re-generate randomly on renders
+  const metadata = useMemo(() => getMetadata(partId), [partId]);
+  
+  // Fetch telemetry only when clicked to simulate an API request
+  const [telemetry, setTelemetry] = useState(null);
+
+  const handleClick = (e) => {
+    e.stopPropagation();
+    if (!clicked) {
+      setTelemetry(getTelemetry(partId));
+    }
+    setClicked(!clicked);
+  };
+
+  const handlePointerOver = (e) => {
+    e.stopPropagation();
+    document.body.style.cursor = 'pointer';
+    setHovered(true);
+  };
+
+  const handlePointerOut = (e) => {
+    e.stopPropagation();
+    document.body.style.cursor = 'auto';
+    setHovered(false);
+  };
+
+  // Spin the fan blades every frame about each rotor's true disc-normal axis
+  // (computed from geometry), driving real blade geometry — not a texture trick.
+  // Speed scales with load once telemetry is known, with a slow idle spin.
+  useFrame((_, delta) => {
+    const load = telemetry ? telemetry.load : 25;
+    const speed = 4 + (load / 100) * 20; // rad/s: idle ~4, full load ~24
+    for (const { obj, axis } of fanRotors) {
+      obj.rotateOnAxis(axis, speed * delta);
+    }
+  });
+
+  return (
+    <group ref={group} position={position} dispose={null}>
+      <group
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+        onClick={handleClick}
+        rotation={[0, -Math.PI / 4, 0]}
+      >
+        <primitive object={scene} />
+
+        {/* Hover Popup */}
+        {hovered && !clicked && (
+          <Html position={[0.1, 0.1, 0.1]} center>
+            <div className="hover-popup">
+              <div className="popup-header">
+                <img src={metadata.logo} alt="Logo" className="popup-logo" />
+                <h4>{metadata.brand}</h4>
+              </div>
+              <div className="popup-body">
+                <p><strong>Model:</strong> {metadata.model}</p>
+                <p><strong>PN:</strong> {metadata.partNumber}</p>
+                <p><strong>SN:</strong> {metadata.serialNumber}</p>
+              </div>
+            </div>
+          </Html>
+        )}
+
+        {/* Click Detail Panel */}
+        {clicked && telemetry && (
+          <Html position={[0.2, 0, 0.2]} center zIndexRange={[100, 0]}>
+            <div className="detail-panel">
+              <div className="panel-header">
+                <h4>GPU Telemetry ({partId})</h4>
+                <button className="close-btn" onClick={handleClick}>&times;</button>
+              </div>
+              <div className="panel-body">
+                <div className="data-row">
+                  <span>Condition</span>
+                  <span className={`status ${telemetry.condition.includes('Critical') ? 'critical' : 'optimal'}`}>
+                    {telemetry.condition}
+                  </span>
+                </div>
+                <div className="data-row">
+                  <span>Age</span>
+                  <span>{telemetry.age} days</span>
+                </div>
+                <div className="data-row">
+                  <span>Temperature</span>
+                  <span>{telemetry.temp} &deg;C</span>
+                </div>
+                <div className="data-row">
+                  <span>Load</span>
+                  <span>{telemetry.load}%</span>
+                </div>
+              </div>
+            </div>
+          </Html>
+        )}
+      </group>
+    </group>
+  );
+}
+
+// Preload the model to prevent popping in
+useGLTF.preload('/gpu_pilot.glb');

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64" width="240" height="64">
+  <rect width="240" height="64" rx="8" fill="#0d0d0d"/>
+  <!-- stylized eye mark in NVIDIA green -->
+  <g fill="#76b900">
+    <path d="M20 32c0-9 7.5-16 17-16 6.5 0 11.5 2.6 14.8 6.3-3.8-2.4-8-3.6-12.8-3.6-8.5 0-14.7 5.6-14.7 13.3S30.5 45.6 39 45.6c4.8 0 9-1.2 12.8-3.6C48.5 45.4 43.5 48 37 48c-9.5 0-17-7-17-16z"/>
+    <circle cx="41" cy="32" r="6"/>
+  </g>
+  <text x="66" y="42" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700" letter-spacing="1" fill="#76b900">NVIDIA</text>
+</svg>
