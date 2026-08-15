@@ -64,10 +64,11 @@ def setup_materials():
     bsdf.inputs['Metallic'].default_value = 0.9
     mats['heatsink'] = mat_hs
     
-    mat_fan = bpy.data.materials.new(name="FanPlastic")
+    mat_fan = bpy.data.materials.new(name="FanCharcoal")
     mat_fan.use_nodes = True
     bsdf = mat_fan.node_tree.nodes["Principled BSDF"]
-    bsdf.inputs['Base Color'].default_value = (0.1, 0.1, 0.1, 1.0)
+    bsdf.inputs['Base Color'].default_value = (0.06, 0.06, 0.07, 1.0)  # dark charcoal
+    bsdf.inputs['Roughness'].default_value = 0.55
     mats['fan'] = mat_fan
 
     mat_shroud = bpy.data.materials.new(name="ShroudPlastic")
@@ -374,6 +375,63 @@ def build_rear_panel(mats):
         slot.data.materials.append(mats['bezel'])
 
 
+def make_system_fan(name, center, mats, scale=1.0):
+    """Build one server fan: a hub cylinder (r=15mm) with 7 blades radiating out,
+    joined into a single object named `name`.
+
+    Blade: 40mm long x 12mm wide x 2mm thick, pitched 20 deg about its own radial
+    axis to read as an airfoil. Blades attach at the hub edge and radiate outward.
+    The spin axis is Y (front-to-back airflow); the blade disc lies in the XZ plane.
+
+    `scale` uniformly shrinks/grows the whole fan (proportions preserved) — the
+    full 110mm fan is scaled to ~75mm to fit inside the 2U chassis.
+    """
+    import mathutils
+
+    hub_r = 0.015 * scale              # 15mm hub radius
+    hub_depth = 0.014 * scale
+    n_blades = 7
+    pitch = math.radians(20)
+    blade_len = 0.040 * scale          # 40mm radial length
+    blade_w = 0.012 * scale            # 12mm tangential width
+    blade_t = 0.002 * scale            # 2mm thickness
+    radial_off = hub_r + blade_len / 2  # inner end meets the hub edge
+
+    cx, cy, cz = center
+    parts = []
+
+    # Hub — cylinder with its axis along Y.
+    bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=hub_r, depth=hub_depth)
+    hub = bpy.context.active_object
+    hub.rotation_euler = (math.pi / 2, 0, 0)
+    hub.location = center
+    hub.data.materials.append(mats['heatsink'])
+    parts.append(hub)
+
+    # Blades — unit cube scaled + pitched (Rx) + pushed out (+X) + spun around Y.
+    Tc = mathutils.Matrix.Translation(center)
+    S = mathutils.Matrix.Diagonal((blade_len, blade_t, blade_w, 1.0))
+    Rpitch = mathutils.Matrix.Rotation(pitch, 4, 'X')
+    Tout = mathutils.Matrix.Translation((radial_off, 0, 0))
+    for k in range(n_blades):
+        bpy.ops.mesh.primitive_cube_add(size=1)
+        bl = bpy.context.active_object
+        Rspin = mathutils.Matrix.Rotation(k * (2 * math.pi / n_blades), 4, 'Y')
+        bl.matrix_world = Tc @ Rspin @ Tout @ Rpitch @ S
+        bl.data.materials.append(mats['fan'])
+        parts.append(bl)
+
+    # Join into one object with its origin at the fan center.
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in parts:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = hub
+    bpy.ops.object.join()
+    hub.name = name
+    hub.data.name = name
+    return hub
+
+
 def build_internal(mats):
     # Motherboard
     bpy.ops.mesh.primitive_cube_add(size=1)
@@ -384,49 +442,22 @@ def build_internal(mats):
     mobo.location = (0, DEPTH * 0.1, -HEIGHT/2 + 0.005)
     mobo.data.materials.append(mats['mobo'])
     
-    # 1. Fan Wall (6 hot-swap fans directly behind drive backplane)
+    # 1. Fan Wall — 3 system fans in a row (hub + 7 pitched blades each),
+    #    scaled to ~75mm so they fit inside the 2U chassis.
     fan_y = -DEPTH * 0.3
-    fan_w = WIDTH * 0.15
-    fan_cage = bpy.ops.mesh.primitive_cube_add(size=1)
+    fan_scale = 0.075 / 0.110          # 110mm spec fan -> ~75mm
+
+    # Mounting bracket behind the fans.
+    bpy.ops.mesh.primitive_cube_add(size=1)
     cage = bpy.context.active_object
     cage.name = "fan_cage"
     cage.data.name = cage.name
-    cage.scale = (WIDTH - 0.02, 0.08, HEIGHT - 0.01)
-    cage.location = (0, fan_y, 0)
+    cage.scale = (WIDTH - 0.02, 0.02, HEIGHT - 0.006)
+    cage.location = (0, fan_y + 0.03, 0)
     cage.data.materials.append(mats['chassis'])
-    
-    for i in range(6):
-        # Fan Module
-        bpy.ops.mesh.primitive_cube_add(size=1)
-        module = bpy.context.active_object
-        module.name = f"fan_module_{i+1}"
-        module.data.name = module.name
-        module.scale = (fan_w * 0.9, 0.07, HEIGHT * 0.8)
-        
-        x_pos = -WIDTH/2 + (fan_w/2) + i * fan_w + 0.015
-        module.location = (x_pos, fan_y, 0)
-        module.data.materials.append(mats['bezel'])
-        
-        # Dual Rotors (Visualized as cylinders)
-        for j, y_off in [(1, -0.015), (2, 0.015)]:
-            bpy.ops.mesh.primitive_cylinder_add(radius=1, depth=1, vertices=16)
-            fan = bpy.context.active_object
-            fan.name = f"system_fan_{i+1}_rotor_{j}"
-            fan.data.name = fan.name
-            fan.scale = (fan_w * 0.4, fan_w * 0.4, 0.02)
-            fan.rotation_euler = (math.pi/2, 0, 0)
-            fan.location = (x_pos, fan_y + y_off, 0)
-            fan.data.materials.append(mats['fan'])
-        
-        # Orange Pull Tab on top
-        bpy.ops.mesh.primitive_cube_add(size=1)
-        tab = bpy.context.active_object
-        tab.name = f"fan_tab_{i+1}"
-        tab.data.name = tab.name
-        tab.scale = (0.015, 0.015, 0.01)
-        tab.location = (x_pos, fan_y, HEIGHT/2 - 0.01)
-        tab.data.materials.append(mats['orange'])
-        tab.parent = module
+
+    for i, x_pos in enumerate([-0.12, 0.0, 0.12]):
+        make_system_fan(f"system_fan_{i+1}", (x_pos, fan_y, 0), mats, scale=fan_scale)
 
     # 2. Air Shroud — a low duct just BEHIND the fan wall, so it channels air
     #    without hiding the CPUs/DIMMs (which sit further back and stay visible).

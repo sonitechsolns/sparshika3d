@@ -40,8 +40,14 @@ export default function Server({ position = [0, 0, 0], isCoverOpen = false }) {
           node.visible = !isCoverOpen;
         }
       }
-      if (/^(system_fan_\d+_rotor_\d+|psu_fan_\d+)$/.test(node.name)) {
-        fans.push({ obj: node, axis: computeLocalSpinAxis(node) });
+      if (/^(system_fan_\d+|psu_fan_\d+)$/.test(node.name)) {
+        // Orient the spin axis toward the front (+Z ≈ the front face after
+        // glTF's Y-up conversion) so every fan turns the same way and a positive
+        // angle reads as counter-clockwise viewed from the front.
+        const axis = computeLocalSpinAxis(node);
+        node.updateWorldMatrix(true, false);
+        if (axis.clone().transformDirection(node.matrixWorld).z < 0) axis.negate();
+        fans.push({ obj: node, axis });
       }
     });
     fansRef.current = fans;
@@ -92,11 +98,15 @@ export default function Server({ position = [0, 0, 0], isCoverOpen = false }) {
     );
   };
 
-  // Fans only spin (and matter) once the cover is open.
+  // Fans spin only when the cover is open, about each fan's geometry-derived
+  // disc-normal axis (so none tumble). Speed tracks CPU load_pct from telemetry
+  // (higher load → faster); the sign gives CCW rotation viewed from the front.
   useFrame((state, delta) => {
     if (!isCoverOpen) return;
+    const load = getTelemetry('CPU-R760-01').load;
+    const speed = 3 + (Number(load) || 0) / 100 * 25; // rad/s: ~3 idle … ~28 full load
     for (const { obj, axis } of fansRef.current) {
-      obj.rotateOnAxis(axis, 6 * delta);
+      obj.rotateOnAxis(axis, speed * delta); // axis points front → +angle = CCW from front
     }
   });
 
