@@ -206,6 +206,16 @@ def build_front_bezel(mats):
         led.location = (x_pos, bezel_y - 0.004, -bay_h / 2 + 0.012)
         led.data.materials.append(mats['green'])
 
+        # Horizontal ventilation slots across the caddy face.
+        for s in range(3):
+            bpy.ops.mesh.primitive_cube_add(size=1)
+            vent = bpy.context.active_object
+            vent.name = f"drive_vent_{i+1}_{s+1}"
+            vent.data.name = vent.name
+            vent.scale = (bay_w * 0.7, 0.002, 0.0016)
+            vent.location = (x_pos, bezel_y - 0.003, 0.012 - s * 0.012)
+            vent.data.materials.append(mats['bezel'])
+
     # 3. Hex Mesh Overlay — a solid grille panel with hexagonal holes cut out
     #    via a boolean. This yields clean, uniform struts. The old approach tiled
     #    individual hex *rings* whose shared edges overlapped and looked distorted.
@@ -315,16 +325,13 @@ def build_rear_panel(mats):
         latch.data.materials.append(mats['orange'])
         latch.parent = psu
         
-        # PSU Fan Grille
-        bpy.ops.mesh.primitive_cylinder_add(radius=1, depth=1, vertices=16)
-        fan = bpy.context.active_object
-        fan.name = f"psu_fan_{i}"
-        fan.data.name = fan.name
-        fan.scale = (psu_h*0.4, psu_h*0.4, 0.01)
-        fan.rotation_euler = (math.pi/2, 0, 0)
-        fan.location = (x_pos + 0.01, rear_y, -HEIGHT/2 + psu_h/2 + 0.01)
-        fan.data.materials.append(mats['bezel'])
-        fan.parent = psu
+        # PSU fan — a real bladed fan at the rear face (outside the rear wall so
+        # it's visible; spins via the psu_fan_ match).
+        make_system_fan(
+            f"psu_fan_{i}",
+            (x_pos + 0.008, rear_y + 0.004, -HEIGHT/2 + psu_h/2 + 0.008),
+            mats, scale=0.36,
+        )
         
         # AC Receptacle
         bpy.ops.mesh.primitive_cube_add(size=1)
@@ -356,14 +363,34 @@ def build_rear_panel(mats):
         rd.data.materials.append(mats['bezel'])
         rd.parent = rdrives
 
-    # 3. I/O Cluster (Bottom Center)
+    # 3. I/O ports (bottom center): iDRAC, USB x2, VGA, ethernet x2 on a recessed
+    #    panel — replaces the old single undifferentiated block.
+    io_z = -HEIGHT/2 + 0.022
     bpy.ops.mesh.primitive_cube_add(size=1)
     io = bpy.context.active_object
     io.name = "io_cluster"
     io.data.name = io.name
-    io.scale = (0.2, 0.02, HEIGHT * 0.3)
-    io.location = (0, rear_y - 0.01, -HEIGHT/2 + (HEIGHT * 0.3)/2 + 0.01)
+    io.scale = (0.17, 0.015, HEIGHT * 0.26)
+    io.location = (0, rear_y - 0.008, io_z)
     io.data.materials.append(mats['chassis'])
+
+    #        name        x       width  height  material
+    ports = [
+        ("io_idrac",  -0.064, 0.012, 0.012, 'logo'),    # blue iDRAC RJ45
+        ("io_usb_1",  -0.040, 0.007, 0.007, 'bezel'),
+        ("io_usb_2",  -0.028, 0.007, 0.007, 'bezel'),
+        ("io_vga",    -0.004, 0.019, 0.010, 'logo'),     # blue VGA
+        ("io_eth_1",   0.030, 0.012, 0.012, 'bezel'),
+        ("io_eth_2",   0.050, 0.012, 0.012, 'bezel'),
+    ]
+    for name, px, pw, ph, matkey in ports:
+        bpy.ops.mesh.primitive_cube_add(size=1)
+        port = bpy.context.active_object
+        port.name = name
+        port.data.name = name
+        port.scale = (pw, 0.008, ph)
+        port.location = (px, rear_y + 0.004, io_z + 0.006)
+        port.data.materials.append(mats[matkey])
 
     # 4. PCIe Slots
     for i in range(4):

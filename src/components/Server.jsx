@@ -11,7 +11,7 @@ const PART_MAP = [
   { partId: 'CPU-R760-01', test: (n) => /^cpu_(heatsink|fins)_1$/.test(n) },
   { partId: 'CPU-R760-02', test: (n) => /^cpu_(heatsink|fins)_2$/.test(n) },
   { partId: 'RAM-R760-01', test: (n) => /^dimm_/.test(n) },
-  { partId: 'DRIVE-R760-01', test: (n) => /^drive_(bay|latch|indicator)_/.test(n) },
+  { partId: 'DRIVE-R760-01', test: (n) => /^drive_(bay|latch|indicator|vent)_/.test(n) },
 ];
 
 function partIdForMesh(name) {
