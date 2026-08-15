@@ -163,47 +163,48 @@ def build_front_bezel(mats):
             btn.data.materials.append(mats['chassis'])
             btn.parent = ear
     
-    # 2. 8-Bay Drives (Vertical orientation, filling space between ears)
+    # 2. 24 vertical 2.5" drive bays filling the space between the ears (the
+    #    R760's high-density front). Bare drives are the default front face; the
+    #    hex/Dell security bezel (built below) is toggleable in the app and clips
+    #    over these when shown. Each bay: caddy + orange circular pull tab (top) +
+    #    green activity LED (bottom). Not parented (the bay carries a non-uniform
+    #    scale that would distort children).
     bay_area_w = WIDTH - (2 * ear_w)
-    bay_w = (bay_area_w / 8) - 0.002
-    bay_h = HEIGHT - 0.005
-    
-    for i in range(8):
-        # Caddy body
+    n_bays = 24
+    pitch = bay_area_w / n_bays
+    bay_w = pitch - 0.0012
+    bay_h = HEIGHT - 0.006
+    left_edge = -WIDTH / 2 + ear_w
+
+    for i in range(n_bays):
+        x_pos = left_edge + pitch * (i + 0.5)
+
+        # Caddy body — front face flush with bezel_y.
         bpy.ops.mesh.primitive_cube_add(size=1)
         bay = bpy.context.active_object
         bay.name = f"drive_bay_{i+1}"
         bay.data.name = bay.name
-        bay.scale = (bay_w, 0.15, bay_h)
-        
-        x_pos = (-WIDTH/2 + ear_w) + (bay_w + 0.002) * i + (bay_w/2) + 0.001
-        bay.location = (x_pos, bezel_y + 0.075, 0)
+        bay.scale = (bay_w, 0.11, bay_h)
+        bay.location = (x_pos, bezel_y + 0.055, 0)
         bay.data.materials.append(mats['chassis'])
-        
-        # Release Latch (Top part of drive)
+
+        # Orange circular pull tab at the top.
+        bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=bay_w * 0.30, depth=0.004)
+        tab = bpy.context.active_object
+        tab.name = f"drive_latch_{i+1}"
+        tab.data.name = tab.name
+        tab.rotation_euler = (math.pi / 2, 0, 0)     # circular face toward the front (-Y)
+        tab.location = (x_pos, bezel_y - 0.004, bay_h / 2 - 0.009)
+        tab.data.materials.append(mats['orange'])
+
+        # Green activity LED near the bottom.
         bpy.ops.mesh.primitive_cube_add(size=1)
-        latch = bpy.context.active_object
-        latch.name = f"drive_latch_{i+1}"
-        latch.data.name = latch.name
-        latch.scale = (bay_w * 0.9, 0.005, bay_h * 0.15)
-        latch.location = (x_pos, bezel_y, HEIGHT/2 - (bay_h * 0.15)/2 - 0.005)
-        
-        # Orange/Green indicator
-        bpy.ops.mesh.primitive_cube_add(size=1)
-        indicator = bpy.context.active_object
-        indicator.name = f"drive_indicator_{i+1}"
-        indicator.data.name = indicator.name
-        indicator.scale = (0.005, 0.002, 0.005)
-        indicator.location = (x_pos, bezel_y - 0.0025, HEIGHT/2 - (bay_h * 0.15)/2 - 0.005)
-        
-        if i == 0:
-            indicator.data.materials.append(mats['green'])
-        else:
-            indicator.data.materials.append(mats['orange'])
-            
-        latch.data.materials.append(mats['bezel'])
-        latch.parent = bay
-        indicator.parent = bay
+        led = bpy.context.active_object
+        led.name = f"drive_indicator_{i+1}"
+        led.data.name = led.name
+        led.scale = (bay_w * 0.40, 0.002, 0.004)
+        led.location = (x_pos, bezel_y - 0.004, -bay_h / 2 + 0.012)
+        led.data.materials.append(mats['green'])
 
     # 3. Hex Mesh Overlay — a solid grille panel with hexagonal holes cut out
     #    via a boolean. This yields clean, uniform struts. The old approach tiled
@@ -432,6 +433,52 @@ def make_system_fan(name, center, mats, scale=1.0):
     return hub
 
 
+def make_fan_module(name, center, mats, fan_scale):
+    """A tall black square shroud with a circular bore housing a spinnable blade
+    assembly, plus an orange accent tab on top — the R760's hot-swap fan module.
+
+    The blade assembly keeps the plain `name` (so the app finds and spins it);
+    the static shroud/tab get `_shroud`/`_tab` suffixes (excluded from spin).
+    """
+    cx, cy, cz = center
+    sw, sd, sh = 0.066, 0.045, 0.082          # shroud w x depth(Y) x height (tall)
+    fan_r = 0.055 * fan_scale                  # outer blade radius from make_system_fan
+    bore_r = fan_r + 0.003
+
+    # Shroud box with a circular bore cut through it (axis along Y).
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    shroud = bpy.context.active_object
+    shroud.scale = (sw, sd, sh)
+    shroud.location = center
+    shroud.data.materials.append(mats['bezel'])   # black housing (assign BEFORE the
+                                                  # boolean so the result keeps it)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=bore_r, depth=sd * 3)
+    cutter = bpy.context.active_object
+    cutter.rotation_euler = (math.pi / 2, 0, 0)
+    cutter.location = center
+    bpy.context.view_layer.objects.active = shroud
+    b = shroud.modifiers.new("bore", 'BOOLEAN')
+    b.operation = 'DIFFERENCE'
+    b.solver = 'EXACT'
+    b.object = cutter
+    bpy.ops.object.modifier_apply(modifier="bore")
+    bpy.data.objects.remove(cutter, do_unlink=True)
+    shroud.name = f"{name}_shroud"
+    shroud.data.name = shroud.name
+
+    # Circular blade assembly inside the bore (spinnable).
+    make_system_fan(name, center, mats, scale=fan_scale)
+
+    # Orange accent tab on top of the module.
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    tab = bpy.context.active_object
+    tab.name = f"{name}_tab"
+    tab.data.name = tab.name
+    tab.scale = (sw * 0.5, sd * 0.45, 0.006)
+    tab.location = (cx, cy, cz + sh / 2 + 0.002)
+    tab.data.materials.append(mats['orange'])
+
+
 def build_internal(mats):
     # Motherboard
     bpy.ops.mesh.primitive_cube_add(size=1)
@@ -442,10 +489,10 @@ def build_internal(mats):
     mobo.location = (0, DEPTH * 0.1, -HEIGHT/2 + 0.005)
     mobo.data.materials.append(mats['mobo'])
     
-    # 1. Fan Wall — 3 system fans in a row (hub + 7 pitched blades each),
-    #    scaled to ~75mm so they fit inside the 2U chassis.
+    # 1. Fan Wall — 6 fan modules in a row. Each is a tall black square shroud
+    #    housing a circular blade assembly, with an orange accent tab on top.
     fan_y = -DEPTH * 0.3
-    fan_scale = 0.075 / 0.110          # 110mm spec fan -> ~75mm
+    fan_scale = 0.060 / 0.110          # ~60mm fans, six across the width
 
     # Mounting bracket behind the fans.
     bpy.ops.mesh.primitive_cube_add(size=1)
@@ -453,11 +500,12 @@ def build_internal(mats):
     cage.name = "fan_cage"
     cage.data.name = cage.name
     cage.scale = (WIDTH - 0.02, 0.02, HEIGHT - 0.006)
-    cage.location = (0, fan_y + 0.03, 0)
+    cage.location = (0, fan_y + 0.035, 0)
     cage.data.materials.append(mats['chassis'])
 
-    for i, x_pos in enumerate([-0.12, 0.0, 0.12]):
-        make_system_fan(f"system_fan_{i+1}", (x_pos, fan_y, 0), mats, scale=fan_scale)
+    for i in range(6):
+        x_pos = (i - 2.5) * 0.077
+        make_fan_module(f"system_fan_{i+1}", (x_pos, fan_y, 0), mats, fan_scale)
 
     # 2. Air Shroud — a low duct just BEHIND the fan wall, so it channels air
     #    without hiding the CPUs/DIMMs (which sit further back and stay visible).
@@ -508,29 +556,40 @@ def build_cpus_memory(mats):
     # the motherboard in the center bay — the payoff when the cover is opened.
     base_z = -HEIGHT/2 + 0.008
     for c, cpu_y in enumerate([-0.02, 0.12]):
-        top_h = HEIGHT * 0.55
+        # Black triangular heatsink: vertical fins whose heights follow a triangle
+        # (tall at the center ridge, short at the edges), over a solid base plate,
+        # all joined into one object. Reads as both "triangular" and "finned".
+        top_h = HEIGHT * 0.62
+        n_fins = 15
+        fin_w, fin_gap, depth = 0.004, 0.0035, 0.11
+        span = n_fins * (fin_w + fin_gap)
+        parts = []
+        for k in range(n_fins):
+            x = -span / 2 + k * (fin_w + fin_gap) + fin_w / 2
+            frac = 1.0 - abs(x) / (span / 2 + 1e-6)      # 1 at center → 0 at edges
+            fh = 0.012 + frac * (top_h - 0.012)
+            bpy.ops.mesh.primitive_cube_add(size=1)
+            fin = bpy.context.active_object
+            fin.scale = (fin_w, depth, fh)
+            fin.location = (x, cpu_y, base_z + fh / 2)
+            fin.data.materials.append(mats['bezel'])   # black
+            parts.append(fin)
+        # Solid base plate under the fins.
         bpy.ops.mesh.primitive_cube_add(size=1)
-        hs = bpy.context.active_object
+        base = bpy.context.active_object
+        base.scale = (span, depth, 0.012)
+        base.location = (0, cpu_y, base_z + 0.006)
+        base.data.materials.append(mats['bezel'])
+        parts.append(base)
+        # Join into a single heatsink object (name preserved for the click-map).
+        bpy.ops.object.select_all(action='DESELECT')
+        for pt in parts:
+            pt.select_set(True)
+        bpy.context.view_layer.objects.active = parts[0]
+        bpy.ops.object.join()
+        hs = parts[0]
         hs.name = f"cpu_heatsink_{c+1}"
         hs.data.name = hs.name
-        hs.scale = (0.115, 0.11, top_h)
-        hs.location = (0, cpu_y, base_z + top_h/2)
-        hs.data.materials.append(mats['heatsink'])
-
-        # Fins: a thin plate arrayed across X (modifier applied on export).
-        bpy.ops.mesh.primitive_cube_add(size=1)
-        fin = bpy.context.active_object
-        fin.name = f"cpu_fins_{c+1}"
-        fin.data.name = fin.name
-        fin.scale = (0.004, 0.10, top_h * 0.92)
-        fin.location = (-0.052, cpu_y, base_z + top_h/2 + 0.003)
-        fin.data.materials.append(mats['heatsink'])
-        arr = fin.modifiers.new("fins", 'ARRAY')
-        arr.use_relative_offset = False
-        arr.use_constant_offset = True
-        arr.constant_offset_displace = (0.009, 0, 0)
-        arr.count = 12
-        fin.parent = hs
 
         # DIMM banks flanking both sides of the socket.
         for side in (-1, 1):

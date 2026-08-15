@@ -20,7 +20,7 @@ function partIdForMesh(name) {
   return hit ? hit.partId : null;
 }
 
-export default function Server({ position = [0, 0, 0], isCoverOpen = false }) {
+export default function Server({ position = [0, 0, 0], isCoverOpen = false, isBezelOn = false }) {
   const group = useRef();
   const { scene } = useGLTF('/server_r760.glb');
   const fansRef = useRef([]);
@@ -39,6 +39,11 @@ export default function Server({ position = [0, 0, 0], isCoverOpen = false }) {
         if (node.name === 'top_cover') {
           node.visible = !isCoverOpen;
         }
+        // Security bezel (hex grille + Dell logo) is a removable cover — off by
+        // default so the 24 drive bays are the front face.
+        if (/^(front_hex_mesh|logo_plate|dell_logo_decal)$/.test(node.name)) {
+          node.visible = isBezelOn;
+        }
       }
       if (/^(system_fan_\d+|psu_fan_\d+)$/.test(node.name)) {
         // Orient the spin axis toward the front (+Z ≈ the front face after
@@ -52,7 +57,7 @@ export default function Server({ position = [0, 0, 0], isCoverOpen = false }) {
     });
     fansRef.current = fans;
     return clone;
-  }, [scene, isCoverOpen]);
+  }, [scene, isCoverOpen, isBezelOn]);
 
   // Position of the event's mesh, expressed in this component's local frame so
   // the popup/panel anchors to the actual part.

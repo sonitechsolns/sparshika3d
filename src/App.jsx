@@ -9,6 +9,7 @@ import './index.css';
 function App() {
   const [activeModel, setActiveModel] = useState('server');
   const [isCoverOpen, setIsCoverOpen] = useState(false);
+  const [isBezelOn, setIsBezelOn] = useState(false);
 
   return (
     <div className="app-container">
@@ -36,6 +37,24 @@ function App() {
               }}
             >
               {isCoverOpen ? 'CLOSE COVER' : 'OPEN COVER'}
+            </button>
+          )}
+          {activeModel === 'server' && (
+            <button
+              onClick={() => setIsBezelOn(!isBezelOn)}
+              style={{
+                background: isBezelOn ? '#4f46e5' : 'rgba(255,255,255,0.1)',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.2)',
+                padding: '6px 16px',
+                borderRadius: '20px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                transition: '0.2s',
+                marginRight: '10px'
+              }}
+            >
+              {isBezelOn ? 'BEZEL ON' : 'BEZEL OFF'}
             </button>
           )}
           <button
@@ -86,7 +105,7 @@ function App() {
 
           <Suspense fallback={null}>
             {activeModel === 'server' ? (
-              <Server position={[0, 0, 0]} isCoverOpen={isCoverOpen} />
+              <Server position={[0, 0, 0]} isCoverOpen={isCoverOpen} isBezelOn={isBezelOn} />
             ) : (
               <GPU position={[0, 0, 0]} partId="GPU-PILOT-01" />
             )}
