@@ -216,6 +216,16 @@ def build_front_bezel(mats):
             vent.location = (x_pos, bezel_y - 0.003, 0.012 - s * 0.012)
             vent.data.materials.append(mats['bezel'])
 
+    # 2b. Drive backplane — the green PCB the caddies plug into, just behind the
+    #     bays (visible on the interior-left when the cover is open).
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    backplane = bpy.context.active_object
+    backplane.name = "drive_backplane"
+    backplane.data.name = backplane.name
+    backplane.scale = (bay_area_w, 0.004, HEIGHT - 0.01)
+    backplane.location = (0, bezel_y + 0.112, 0)
+    backplane.data.materials.append(mats['mobo'])
+
     # 3. Hex Mesh Overlay — a solid grille panel with hexagonal holes cut out
     #    via a boolean. This yields clean, uniform struts. The old approach tiled
     #    individual hex *rings* whose shared edges overlapped and looked distorted.
@@ -618,17 +628,20 @@ def build_cpus_memory(mats):
         hs.name = f"cpu_heatsink_{c+1}"
         hs.data.name = hs.name
 
-        # DIMM banks flanking both sides of the socket.
+        # DIMM banks — two tidy rows of 8 parallel modules flanking each socket,
+        # centered on the CPU (32 DIMMs total, an R760-realistic count).
+        n_dimm = 8
+        dimm_pitch = 0.008
         for side in (-1, 1):
             tag = 'L' if side < 0 else 'R'
-            for d in range(6):
+            for d in range(n_dimm):
+                y = cpu_y + (d - (n_dimm - 1) / 2) * dimm_pitch
                 bpy.ops.mesh.primitive_cube_add(size=1)
                 dm = bpy.context.active_object
                 dm.name = f"dimm_{c+1}_{tag}_{d+1}"
                 dm.data.name = dm.name
-                dm.scale = (0.05, 0.003, HEIGHT * 0.5)
-                dm.location = (side * 0.105, cpu_y - 0.033 + d * 0.012,
-                               base_z + (HEIGHT * 0.5)/2)
+                dm.scale = (0.052, 0.0025, HEIGHT * 0.55)
+                dm.location = (side * 0.10, y, base_z + (HEIGHT * 0.55) / 2)
                 dm.data.materials.append(mats['dimm'])
 
 
