@@ -225,6 +225,29 @@ body {
   font-weight: 500;
 }
 
+/* Metric row with a live sparkline under the label/value. */
+.metric-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric-row__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.875rem;
+}
+
+.metric-row__head span:first-child {
+  color: var(--text-muted);
+}
+
+.metric-row__head span:last-child {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
 .status {
   padding: 0.25rem 0.75rem;
   border-radius: 9999px;

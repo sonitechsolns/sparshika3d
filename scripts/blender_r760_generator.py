@@ -351,6 +351,23 @@ def build_rear_panel(mats):
         ac.scale = (0.02, 0.01, 0.015)
         ac.location = (x_pos - psu_w/4, rear_y, -HEIGHT/2 + psu_h/2 + 0.01)
         ac.data.materials.append(mats['bezel'])
+
+        # Perforated metal fan-guard grille over the PSU fan.
+        make_perforated_grille(
+            f"psu_grille_{i}",
+            (x_pos + 0.008, rear_y + 0.011, -HEIGHT/2 + psu_h/2 + 0.008),
+            0.040, 0.034, mats, material_key='chassis',
+            hole_r=0.0016, pitch=0.0045, thickness=0.002,
+        )
+
+        # Pull handle protruding from the bottom of the PSU face.
+        bpy.ops.mesh.primitive_cube_add(size=1)
+        handle = bpy.context.active_object
+        handle.name = f"psu_handle_{i}"
+        handle.data.name = handle.name
+        handle.scale = (psu_w * 0.72, 0.006, 0.006)
+        handle.location = (x_pos, rear_y + 0.016, -HEIGHT/2 + 0.014)
+        handle.data.materials.append(mats['bezel'])
         ac.parent = psu
 
     # 2. Rear Drives (Top Center)
@@ -411,6 +428,14 @@ def build_rear_panel(mats):
         slot.scale = (0.02, 0.01, HEIGHT * 0.45)
         slot.location = (-0.15 + i*0.03, rear_y, 0)
         slot.data.materials.append(mats['bezel'])
+
+    # 5. Metallic ventilation grille covering the central PCIe / expansion area.
+    make_perforated_grille(
+        "rear_grille",
+        (0.0, rear_y + 0.006, 0.002),
+        0.28, 0.036, mats, material_key='chassis',
+        hole_r=0.0016, pitch=0.005, thickness=0.002,
+    )
 
 
 def make_system_fan(name, center, mats, scale=1.0):
@@ -516,6 +541,74 @@ def make_fan_module(name, center, mats, fan_scale):
     tab.data.materials.append(mats['orange'])
 
 
+def make_perforated_grille(name, center, size_x, size_z, mats, material_key='chassis',
+                           hole_r=0.0018, pitch=0.005, thickness=0.002):
+    """A thin panel with a grid of round holes cut through it (boolean) — a
+    reusable ventilation grille. Holes run along Y (through the panel face)."""
+    cx, cy, cz = center
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    panel = bpy.context.active_object
+    panel.scale = (size_x, thickness, size_z)
+    panel.location = center
+    panel.data.materials.append(mats[material_key])   # assign before the boolean
+
+    bm = bmesh.new()
+    ncol = max(1, int(size_x / pitch))
+    nrow = max(1, int(size_z / pitch))
+    x0 = -(ncol - 1) * pitch / 2
+    z0 = -(nrow - 1) * pitch / 2
+    for rz in range(nrow):
+        for cxi in range(ncol):
+            hx, hz = x0 + cxi * pitch, z0 + rz * pitch
+            top = [bm.verts.new((hx + math.cos(math.radians(a * 45 + 22.5)) * hole_r,
+                                 thickness,
+                                 hz + math.sin(math.radians(a * 45 + 22.5)) * hole_r))
+                   for a in range(8)]
+            bot = [bm.verts.new((v.co.x, -thickness, v.co.z)) for v in top]
+            bm.faces.new(top)
+            bm.faces.new(list(reversed(bot)))
+            for a in range(8):
+                b2 = (a + 1) % 8
+                bm.faces.new((top[a], top[b2], bot[b2], bot[a]))
+    me = bpy.data.meshes.new(name + "_cut")
+    bm.to_mesh(me)
+    bm.free()
+    cutter = bpy.data.objects.new(name + "_cut", me)
+    bpy.context.collection.objects.link(cutter)
+    cutter.location = center
+    bpy.context.view_layer.objects.active = panel
+    b = panel.modifiers.new("perf", 'BOOLEAN')
+    b.operation = 'DIFFERENCE'
+    b.solver = 'EXACT'
+    b.object = cutter
+    bpy.ops.object.modifier_apply(modifier="perf")
+    bpy.data.objects.remove(cutter, do_unlink=True)
+    panel.name = name
+    panel.data.name = name
+    return panel
+
+
+def make_gpu_card(name, x, mats):
+    """Placeholder GPU riser card: a green PCB with a dark cooling shroud,
+    installed horizontally, plugging into the rear riser. `<name>_pcb` and
+    `<name>_shroud` are the clickable meshes."""
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    pcb = bpy.context.active_object
+    pcb.name = f"{name}_pcb"
+    pcb.data.name = pcb.name
+    pcb.scale = (0.05, 0.14, 0.003)
+    pcb.location = (x, 0.17, 0.022)
+    pcb.data.materials.append(mats['mobo'])       # green PCB
+
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    shroud = bpy.context.active_object
+    shroud.name = f"{name}_shroud"
+    shroud.data.name = shroud.name
+    shroud.scale = (0.046, 0.12, 0.016)
+    shroud.location = (x, 0.17, 0.033)
+    shroud.data.materials.append(mats['bezel'])   # dark cooling shroud
+
+
 def build_internal(mats):
     # Motherboard
     bpy.ops.mesh.primitive_cube_add(size=1)
@@ -588,35 +681,37 @@ def build_internal(mats):
         bracket.data.materials.append(mats['chassis'])
         bracket.parent = riser
 
+    # GPU accelerator cards installed in riser_1 and riser_3 (clickable in-app
+    # as GPU-RISER-01 / GPU-RISER-02).
+    make_gpu_card("gpu_riser_01", -0.16, mats)
+    make_gpu_card("gpu_riser_02", 0.0, mats)
+
 def build_cpus_memory(mats):
     # Two socketed CPU heatsinks (finned) with flanking DIMM banks, sitting on
     # the motherboard in the center bay — the payoff when the cover is opened.
     base_z = -HEIGHT/2 + 0.008
     for c, cpu_y in enumerate([-0.02, 0.12]):
-        # Black triangular heatsink: vertical fins whose heights follow a triangle
-        # (tall at the center ridge, short at the edges), over a solid base plate,
-        # all joined into one object. Reads as both "triangular" and "finned".
-        top_h = HEIGHT * 0.62
-        n_fins = 15
-        fin_w, fin_gap, depth = 0.004, 0.0035, 0.11
+        # Rectangular finned heatsink: a base plate with tall, equal-height vertical
+        # aluminium fins running lengthwise → flat top (the real R760 profile).
+        top_h = HEIGHT * 0.5
+        n_fins = 13
+        fin_w, fin_gap, depth = 0.004, 0.004, 0.10
         span = n_fins * (fin_w + fin_gap)
         parts = []
         for k in range(n_fins):
             x = -span / 2 + k * (fin_w + fin_gap) + fin_w / 2
-            frac = 1.0 - abs(x) / (span / 2 + 1e-6)      # 1 at center → 0 at edges
-            fh = 0.012 + frac * (top_h - 0.012)
             bpy.ops.mesh.primitive_cube_add(size=1)
             fin = bpy.context.active_object
-            fin.scale = (fin_w, depth, fh)
-            fin.location = (x, cpu_y, base_z + fh / 2)
-            fin.data.materials.append(mats['bezel'])   # black
+            fin.scale = (fin_w, depth, top_h)
+            fin.location = (x, cpu_y, base_z + 0.008 + top_h / 2)
+            fin.data.materials.append(mats['heatsink'])   # aluminium (metallic)
             parts.append(fin)
         # Solid base plate under the fins.
         bpy.ops.mesh.primitive_cube_add(size=1)
         base = bpy.context.active_object
-        base.scale = (span, depth, 0.012)
-        base.location = (0, cpu_y, base_z + 0.006)
-        base.data.materials.append(mats['bezel'])
+        base.scale = (span, depth, 0.008)
+        base.location = (0, cpu_y, base_z + 0.004)
+        base.data.materials.append(mats['heatsink'])
         parts.append(base)
         # Join into a single heatsink object (name preserved for the click-map).
         bpy.ops.object.select_all(action='DESELECT')

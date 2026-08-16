@@ -81,6 +81,21 @@ const PART_IDENTITY = {
     logo: '/dell_logo.png',
     partNumber: '0M7X8N',
     serialNumber: 'DRV01-R760-7A44'
+  },
+  // GPU accelerator cards installed in the rear risers.
+  'GPU-RISER-01': {
+    brand: 'NVIDIA',
+    model: 'A2 Tensor Core GPU (Riser 1)',
+    logo: '/nvidia_logo.svg',
+    partNumber: '900-2G179-0000-001',
+    serialNumber: 'A2-R1-R760-5C2D'
+  },
+  'GPU-RISER-02': {
+    brand: 'NVIDIA',
+    model: 'A2 Tensor Core GPU (Riser 3)',
+    logo: '/nvidia_logo.svg',
+    partNumber: '900-2G179-0000-001',
+    serialNumber: 'A2-R3-R760-6E8F'
   }
 };
 
@@ -127,49 +142,88 @@ export function getMetadata(partId) {
 export function getTelemetry(partId) {
   const record = _cache.get(partId);
   if (record) {
+    const rpm = Array.isArray(record.metrics.fan_rpm) && record.metrics.fan_rpm.length
+      ? record.metrics.fan_rpm[0]
+      : null;
     return {
       condition: record.health.condition,      // display-ready label
       age: record.age_days,                     // days
       temp: Number(record.metrics.temp_c).toFixed(1), // Celsius
-      load: record.metrics.load_pct             // percentage
+      load: record.metrics.load_pct,            // percentage
+      rpm                                        // fan RPM (null for non-fans)
     };
   }
   return simulatedTelemetry(partId);
 }
 
-/**
- * Original simulated generator — retained as the offline/no-data fallback so
- * the twin still animates without a live cloud connection.
- */
+// Coherent simulated fallback: a per-part random walk so repeated reads vary
+// smoothly (which also makes the metric graphs look like real trends, not noise).
+const _sim = new Map();
+const _step = (mag) => (Math.random() - 0.5) * 2 * mag;
+const _clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
 function simulatedTelemetry(partId) {
-  // Fans report differently: intake air temp, and RPM (→ load%) that rises with
-  // temperature. Mirrors the agent's fan sim so the shape matches the cloud.
-  if (typeof partId === 'string' && partId.startsWith('FAN-')) {
-    const MAX_RPM = 18000;
-    const temp = 24 + Math.random() * 20;                 // ~24–44 °C intake air
-    const frac = (temp - 24) / 20;                         // 0..1
-    const rpm = Math.round(4000 + frac * (MAX_RPM - 4000) + (Math.random() * 600 - 300));
-    const load = Math.min(100, Math.round((rpm / MAX_RPM) * 100)); // fan speed % of max
-    let condition = 'Optimal';
-    if (rpm > MAX_RPM * 0.9) condition = 'Warning';
-    if (rpm < 2500) condition = 'Critical';               // stalled rotor
-    const age = Math.floor(Math.random() * 700) + 100;
-    return { condition, age, temp: temp.toFixed(1), load };
+  const isFan = typeof partId === 'string' && partId.startsWith('FAN-');
+  let s = _sim.get(partId);
+  if (!s) {
+    s = { age: Math.floor(Math.random() * 900) + 100, temp: 30, load: 40 };
+    _sim.set(partId, s);
   }
 
-  const load = Math.floor(Math.random() * 85) + 10;
-  const temp = 35 + Math.floor((load / 100) * 50) + (Math.random() * 5 - 2.5);
-  const age = Math.floor(Math.random() * 1000) + 100;
+  if (isFan) {
+    // Intake air temp walk drives RPM (hotter → faster); load = % of max RPM.
+    const MAX_RPM = 18000;
+    s.temp = _clamp(s.temp + _step(1.5), 20, 55);
+    const rpm = Math.round(4000 + ((s.temp - 20) / 35) * (MAX_RPM - 4000) + _step(200));
+    const load = Math.min(100, Math.round((rpm / MAX_RPM) * 100));
+    let condition = 'Optimal';
+    if (rpm > MAX_RPM * 0.9) condition = 'Warning';
+    if (rpm < 2500) condition = 'Critical';
+    return { condition, age: s.age, temp: s.temp.toFixed(1), load, rpm };
+  }
 
+  s.load = _clamp(s.load + _step(5), 5, 98);
+  const temp = 35 + (s.load / 100) * 45 + _step(1.5);
   let condition = 'Optimal';
   if (temp > 80) condition = 'Warning - High Temp';
-  if (age > 900) condition = 'Maintenance Recommended';
-  if (load > 90 && temp > 80) condition = 'Critical';
+  if (s.age > 900) condition = 'Maintenance Recommended';
+  if (s.load > 90 && temp > 80) condition = 'Critical';
+  return { condition, age: s.age, temp: temp.toFixed(1), load: Math.round(s.load), rpm: null };
+}
 
-  return {
-    condition,
-    age,
-    temp: temp.toFixed(1),
-    load
-  };
+// --- Metric history for the graph system ---------------------------------
+// A rolling buffer of recent readings per part, sampled on a timer, so the
+// telemetry panel can draw live sparklines for each metric.
+const HISTORY_LEN = 30;
+const _history = new Map();   // partId -> [{ temp, load, rpm, condition, age }]
+const _watched = new Set();
+
+function _record(partId) {
+  const t = getTelemetry(partId);
+  let arr = _history.get(partId);
+  if (!arr) { arr = []; _history.set(partId, arr); }
+  arr.push({
+    temp: Number(t.temp),
+    load: Number(t.load),
+    rpm: t.rpm != null ? Number(t.rpm) : null,
+    condition: t.condition,
+    age: t.age
+  });
+  if (arr.length > HISTORY_LEN) arr.shift();
+}
+
+if (typeof window !== 'undefined') {
+  setInterval(() => { for (const pid of _watched) _record(pid); }, 2000);
+}
+
+/** Start recording a part's metric history (idempotent); seeds a short trail. */
+export function watchMetric(partId) {
+  if (_watched.has(partId)) return;
+  _watched.add(partId);
+  for (let i = 0; i < 12; i++) _record(partId);
+}
+
+/** Recent samples for a part: [{ temp, load, rpm, condition, age }, ...]. */
+export function getMetricHistory(partId) {
+  return _history.get(partId) || [];
 }

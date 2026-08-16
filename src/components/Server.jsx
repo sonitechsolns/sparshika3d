@@ -1,9 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useGLTF, Html } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { computeLocalSpinAxis } from '../utils/fanAxis';
-import { getTelemetry, getMetadata } from '../data/telemetry';
+import { getTelemetry, getMetadata, watchMetric, getMetricHistory } from '../data/telemetry';
+import Sparkline from './Sparkline';
 
 // Map internal-component meshes → part_id (the join key to metadata + cloud
 // telemetry), so each component is inspectable exactly like GPU-PILOT-01.
@@ -19,6 +20,9 @@ function partIdForMesh(name) {
   // Each fan module (blade assembly, shroud, or tab) → its own FAN-R760-0N id.
   const fan = name.match(/^system_fan_(\d+)(?:_shroud|_tab)?$/);
   if (fan) return `FAN-R760-0${fan[1]}`;
+  // GPU riser cards (pcb or shroud) → GPU-RISER-0N.
+  const gpu = name.match(/^gpu_riser_(\d+)_/);
+  if (gpu) return `GPU-RISER-${gpu[1]}`;
   const hit = PART_MAP.find((p) => p.test(name));
   return hit ? hit.partId : null;
 }
@@ -31,6 +35,16 @@ export default function Server({ position = [0, 0, 0], isCoverOpen = false, isBe
 
   const [hover, setHover] = useState(null);     // { partId, metadata, pos:[x,y,z] }
   const [selected, setSelected] = useState(null); // { partId, telemetry, pos:[x,y,z] }
+  const [, setTick] = useState(0);
+
+  // While a part is selected, record its metric history and refresh the panel
+  // graphs on a timer.
+  useEffect(() => {
+    if (!selected) return undefined;
+    watchMetric(selected.partId);
+    const id = setInterval(() => setTick((t) => t + 1), 2000);
+    return () => clearInterval(id);
+  }, [selected]);
 
   // Clone materials to prevent shared mutation issues
   const clonedScene = React.useMemo(() => {
@@ -146,8 +160,8 @@ export default function Server({ position = [0, 0, 0], isCoverOpen = false, isBe
         </Html>
       )}
 
-      {/* Click telemetry panel */}
-      {selected && selected.telemetry && (
+      {/* Click telemetry panel with live metric graphs */}
+      {selected && (
         <Html
           position={[selected.pos[0], selected.pos[1] + 0.12, selected.pos[2]]}
           center
@@ -158,26 +172,47 @@ export default function Server({ position = [0, 0, 0], isCoverOpen = false, isBe
               <h4>Telemetry ({selected.partId})</h4>
               <button className="close-btn" onClick={() => setSelected(null)}>&times;</button>
             </div>
-            <div className="panel-body">
-              <div className="data-row">
-                <span>Condition</span>
-                <span className={`status ${selected.telemetry.condition.includes('Critical') ? 'critical' : 'optimal'}`}>
-                  {selected.telemetry.condition}
-                </span>
-              </div>
-              <div className="data-row">
-                <span>Age</span>
-                <span>{selected.telemetry.age} days</span>
-              </div>
-              <div className="data-row">
-                <span>Temperature</span>
-                <span>{selected.telemetry.temp} &deg;C</span>
-              </div>
-              <div className="data-row">
-                <span>Load</span>
-                <span>{selected.telemetry.load}%</span>
-              </div>
-            </div>
+            {(() => {
+              const hist = getMetricHistory(selected.partId);
+              const cur = hist[hist.length - 1] || selected.telemetry;
+              return (
+                <div className="panel-body">
+                  <div className="data-row">
+                    <span>Condition</span>
+                    <span className={`status ${String(cur.condition).includes('Critical') ? 'critical' : 'optimal'}`}>
+                      {cur.condition}
+                    </span>
+                  </div>
+                  <div className="data-row">
+                    <span>Age</span>
+                    <span>{cur.age} days</span>
+                  </div>
+                  <div className="metric-row">
+                    <div className="metric-row__head">
+                      <span>Temperature</span>
+                      <span>{Number(cur.temp).toFixed(1)} &deg;C</span>
+                    </div>
+                    <Sparkline values={hist.map((s) => s.temp)} color="#ff8a4c" />
+                  </div>
+                  <div className="metric-row">
+                    <div className="metric-row__head">
+                      <span>Load</span>
+                      <span>{cur.load}%</span>
+                    </div>
+                    <Sparkline values={hist.map((s) => s.load)} color="#4f46e5" />
+                  </div>
+                  {cur.rpm != null && (
+                    <div className="metric-row">
+                      <div className="metric-row__head">
+                        <span>Fan RPM</span>
+                        <span>{Number(cur.rpm).toLocaleString()}</span>
+                      </div>
+                      <Sparkline values={hist.map((s) => s.rpm)} color="#35e0c6" />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </Html>
       )}

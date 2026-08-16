@@ -1,8 +1,9 @@
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF, Html } from '@react-three/drei';
-import { getTelemetry, getMetadata } from '../data/telemetry';
+import { getTelemetry, getMetadata, watchMetric, getMetricHistory } from '../data/telemetry';
 import { computeLocalSpinAxis } from '../utils/fanAxis';
+import Sparkline from './Sparkline';
 
 export function GPU({ position, partId }) {
   const group = useRef();
@@ -29,6 +30,15 @@ export function GPU({ position, partId }) {
   
   // Fetch telemetry only when clicked to simulate an API request
   const [telemetry, setTelemetry] = useState(null);
+  const [, setTick] = useState(0);
+
+  // While the detail panel is open, record metric history and refresh graphs.
+  useEffect(() => {
+    if (!clicked) return undefined;
+    watchMetric(partId);
+    const id = setInterval(() => setTick((t) => t + 1), 2000);
+    return () => clearInterval(id);
+  }, [clicked, partId]);
 
   const handleClick = (e) => {
     e.stopPropagation();
@@ -88,7 +98,7 @@ export function GPU({ position, partId }) {
           </Html>
         )}
 
-        {/* Click Detail Panel */}
+        {/* Click Detail Panel with live metric graphs */}
         {clicked && telemetry && (
           <Html position={[0.2, 0, 0.2]} center zIndexRange={[100, 0]}>
             <div className="detail-panel">
@@ -96,26 +106,47 @@ export function GPU({ position, partId }) {
                 <h4>GPU Telemetry ({partId})</h4>
                 <button className="close-btn" onClick={handleClick}>&times;</button>
               </div>
-              <div className="panel-body">
-                <div className="data-row">
-                  <span>Condition</span>
-                  <span className={`status ${telemetry.condition.includes('Critical') ? 'critical' : 'optimal'}`}>
-                    {telemetry.condition}
-                  </span>
-                </div>
-                <div className="data-row">
-                  <span>Age</span>
-                  <span>{telemetry.age} days</span>
-                </div>
-                <div className="data-row">
-                  <span>Temperature</span>
-                  <span>{telemetry.temp} &deg;C</span>
-                </div>
-                <div className="data-row">
-                  <span>Load</span>
-                  <span>{telemetry.load}%</span>
-                </div>
-              </div>
+              {(() => {
+                const hist = getMetricHistory(partId);
+                const cur = hist[hist.length - 1] || telemetry;
+                return (
+                  <div className="panel-body">
+                    <div className="data-row">
+                      <span>Condition</span>
+                      <span className={`status ${String(cur.condition).includes('Critical') ? 'critical' : 'optimal'}`}>
+                        {cur.condition}
+                      </span>
+                    </div>
+                    <div className="data-row">
+                      <span>Age</span>
+                      <span>{cur.age} days</span>
+                    </div>
+                    <div className="metric-row">
+                      <div className="metric-row__head">
+                        <span>Temperature</span>
+                        <span>{Number(cur.temp).toFixed(1)} &deg;C</span>
+                      </div>
+                      <Sparkline values={hist.map((s) => s.temp)} color="#ff8a4c" />
+                    </div>
+                    <div className="metric-row">
+                      <div className="metric-row__head">
+                        <span>Load</span>
+                        <span>{cur.load}%</span>
+                      </div>
+                      <Sparkline values={hist.map((s) => s.load)} color="#4f46e5" />
+                    </div>
+                    {cur.rpm != null && (
+                      <div className="metric-row">
+                        <div className="metric-row__head">
+                          <span>Fan RPM</span>
+                          <span>{Number(cur.rpm).toLocaleString()}</span>
+                        </div>
+                        <Sparkline values={hist.map((s) => s.rpm)} color="#35e0c6" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </Html>
         )}
