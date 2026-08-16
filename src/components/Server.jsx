@@ -16,6 +16,9 @@ const PART_MAP = [
 
 function partIdForMesh(name) {
   if (!name) return null;
+  // Each fan module (blade assembly, shroud, or tab) → its own FAN-R760-0N id.
+  const fan = name.match(/^system_fan_(\d+)(?:_shroud|_tab)?$/);
+  if (fan) return `FAN-R760-0${fan[1]}`;
   const hit = PART_MAP.find((p) => p.test(name));
   return hit ? hit.partId : null;
 }

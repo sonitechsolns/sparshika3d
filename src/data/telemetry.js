@@ -84,6 +84,17 @@ const PART_IDENTITY = {
   }
 };
 
+// Six identical Dell hot-swap fan modules (FAN-R760-01 … FAN-R760-06).
+for (let i = 1; i <= 6; i++) {
+  PART_IDENTITY[`FAN-R760-0${i}`] = {
+    brand: 'Dell',
+    model: 'Standard Fan Module 80mm',
+    logo: '/dell_logo.png',
+    partNumber: 'W8KYY',
+    serialNumber: `FAN0${i}-R760-${4200 + i * 137}`
+  };
+}
+
 // Fallback identity for any part not yet in the registry, so the UI never
 // renders a broken image or an undefined brand.
 const UNKNOWN_IDENTITY = {
@@ -130,7 +141,22 @@ export function getTelemetry(partId) {
  * Original simulated generator — retained as the offline/no-data fallback so
  * the twin still animates without a live cloud connection.
  */
-function simulatedTelemetry() {
+function simulatedTelemetry(partId) {
+  // Fans report differently: intake air temp, and RPM (→ load%) that rises with
+  // temperature. Mirrors the agent's fan sim so the shape matches the cloud.
+  if (typeof partId === 'string' && partId.startsWith('FAN-')) {
+    const MAX_RPM = 18000;
+    const temp = 24 + Math.random() * 20;                 // ~24–44 °C intake air
+    const frac = (temp - 24) / 20;                         // 0..1
+    const rpm = Math.round(4000 + frac * (MAX_RPM - 4000) + (Math.random() * 600 - 300));
+    const load = Math.min(100, Math.round((rpm / MAX_RPM) * 100)); // fan speed % of max
+    let condition = 'Optimal';
+    if (rpm > MAX_RPM * 0.9) condition = 'Warning';
+    if (rpm < 2500) condition = 'Critical';               // stalled rotor
+    const age = Math.floor(Math.random() * 700) + 100;
+    return { condition, age, temp: temp.toFixed(1), load };
+  }
+
   const load = Math.floor(Math.random() * 85) + 10;
   const temp = 35 + Math.floor((load / 100) * 50) + (Math.random() * 5 - 2.5);
   const age = Math.floor(Math.random() * 1000) + 100;
