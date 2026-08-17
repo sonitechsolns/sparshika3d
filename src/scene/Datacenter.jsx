@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Instances, Instance, Html } from '@react-three/drei';
+import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import Rack from './Rack';
 import { getMetadata } from '../data/telemetry';
@@ -177,7 +178,7 @@ const RACKS = [
   { id: 'RACK-06', pos: [0.6, 0, ROW_Z], rot: Math.PI, units: PD },
 ];
 
-function Racks({ onSelect, onHover, onUnhover }) {
+function Racks({ pulled, onSelect, onHover, onUnhover }) {
   return (
     <group>
       {RACKS.map((r) => (
@@ -186,6 +187,7 @@ function Racks({ onSelect, onHover, onUnhover }) {
           position={r.pos}
           rotationY={r.rot}
           units={r.units}
+          pulled={pulled}
           onSelect={onSelect}
           onHover={onHover}
           onUnhover={onUnhover}
@@ -193,6 +195,43 @@ function Racks({ onSelect, onHover, onUnhover }) {
       ))}
     </group>
   );
+}
+
+// Fade every mesh that isn't part of the pulled-out unit down to 20% while a
+// unit is in focus, restoring them on reset.
+function SceneDimmer({ pulled }) {
+  const { scene } = useThree();
+  useEffect(() => {
+    if (!pulled) return undefined;
+    const touched = [];
+    scene.traverse((o) => {
+      if (!o.isMesh || !o.material) return;
+      for (let p = o; p; p = p.parent) {
+        if (p.userData && p.userData.partId === pulled) return; // keep the focused unit
+      }
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach((m) => {
+        if (m.userData.__dim) return;
+        m.userData.__dim = { opacity: m.opacity, transparent: m.transparent, depthWrite: m.depthWrite };
+        m.transparent = true;
+        m.opacity = 0.2;
+        m.depthWrite = false;
+        touched.push(m);
+      });
+    });
+    return () => {
+      touched.forEach((m) => {
+        const s = m.userData.__dim;
+        if (s) {
+          m.opacity = s.opacity;
+          m.transparent = s.transparent;
+          m.depthWrite = s.depthWrite;
+          delete m.userData.__dim;
+        }
+      });
+    };
+  }, [pulled, scene]);
+  return null;
 }
 
 /**
@@ -232,7 +271,19 @@ export default function Datacenter() {
       <Shell />
       <CeilingLights />
       <CableTrays />
-      <Racks onSelect={onSelect} onHover={onHover} onUnhover={onUnhover} />
+      <Racks
+        pulled={selected?.partId}
+        onSelect={onSelect}
+        onHover={onHover}
+        onUnhover={onUnhover}
+      />
+      <SceneDimmer pulled={selected?.partId} />
+
+      {/* Click-away backdrop: any empty click resets the focus. */}
+      <mesh scale={40} onClick={() => setSelected(null)}>
+        <sphereGeometry args={[1, 8, 8]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.BackSide} />
+      </mesh>
 
       {/* Screen-space cards (no distanceFactor) so they stay a readable size at
           any zoom instead of ballooning when you zoom in. */}
@@ -243,7 +294,7 @@ export default function Datacenter() {
       )}
       {selected && (
         <Html position={selected.pos} center zIndexRange={[100, 0]}>
-          <TelemetryPanel partId={selected.partId} onClose={() => setSelected(null)} />
+          <TelemetryPanel partId={selected.partId} large onClose={() => setSelected(null)} />
         </Html>
       )}
     </group>

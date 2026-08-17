@@ -167,6 +167,25 @@ body {
   pointer-events: auto;
 }
 
+/* Enlarged panel shown next to a pulled-out unit in focus mode. */
+.detail-panel--large {
+  width: 440px;
+}
+.detail-panel--large .panel-header h4 {
+  font-size: 1.2rem;
+}
+.detail-panel--large .panel-body {
+  padding: 1.75rem;
+  gap: 1.25rem;
+}
+.detail-panel--large .data-row,
+.detail-panel--large .metric-row__head {
+  font-size: 1rem;
+}
+.detail-panel--large svg {
+  height: 40px;
+}
+
 .panel-header {
   padding: 1.25rem 1.5rem;
   display: flex;

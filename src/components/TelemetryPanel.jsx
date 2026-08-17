@@ -3,7 +3,7 @@ import { getTelemetry, getMetricHistory, watchMetric } from '../data/telemetry';
 import Sparkline from './Sparkline';
 
 /** Live telemetry panel with metric sparklines, keyed by part_id. */
-export default function TelemetryPanel({ partId, onClose }) {
+export default function TelemetryPanel({ partId, onClose, large = false }) {
   const [, setTick] = useState(0);
   useEffect(() => {
     watchMetric(partId);
@@ -15,7 +15,7 @@ export default function TelemetryPanel({ partId, onClose }) {
   const cur = hist[hist.length - 1] || getTelemetry(partId);
 
   return (
-    <div className="detail-panel">
+    <div className={`detail-panel${large ? ' detail-panel--large' : ''}`}>
       <div className="panel-header">
         <h4>Telemetry ({partId})</h4>
         <button className="close-btn" onClick={onClose}>&times;</button>

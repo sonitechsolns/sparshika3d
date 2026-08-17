@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Instances, Instance } from '@react-three/drei';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
 
 export const U = 0.04445;          // 1U in metres
 export const RW = 0.6;             // rack width
@@ -49,13 +51,21 @@ function Cabinet() {
   );
 }
 
-function Unit({ startU, heightU, kind, partId, onSelect, onHover, onUnhover }) {
+function Unit({ startU, heightU, kind, partId, pulled, onSelect, onHover, onUnhover }) {
   const y = uY(startU, heightU);
   const h = heightU * U - 0.004;
   const w = RW - 0.06;
+  const slide = useRef();
 
-  // Every mounted unit with a partId is selectable → telemetry
-  // (servers, switches, storage, PDU/UPS).
+  // Slide the selected unit ~0.5m out of the rack (local -Z, the front) and
+  // ease it back when deselected — ~0.3s via exponential damping.
+  useFrame((_, delta) => {
+    if (!slide.current) return;
+    const target = pulled === partId ? -0.5 : 0;
+    slide.current.position.z = THREE.MathUtils.damp(slide.current.position.z, target, 16, delta);
+  });
+
+  // Every mounted unit with a partId is selectable → telemetry.
   const handlers = partId
     ? {
         onPointerOver: (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; onHover && onHover(partId, e.object); },
@@ -64,23 +74,22 @@ function Unit({ startU, heightU, kind, partId, onSelect, onHover, onUnhover }) {
       }
     : {};
 
+  let content = null;
   if (kind === 'server') {
     const depth = 0.7;
     const n = 14;
-    return (
-      <group position={[0, y, 0]} {...handlers}>
+    content = (
+      <>
         <mesh position={[0, 0, FRONT_FACE + depth / 2]}>
           <boxGeometry args={[w, h, depth]} />
           <meshStandardMaterial color="#2a2f38" metalness={0.4} roughness={0.5} />
         </mesh>
-        {/* drive bays */}
         {Array.from({ length: n }).map((_, k) => (
           <mesh key={k} position={[-w / 2 + 0.03 + (k * (w - 0.06)) / (n - 1), 0, FRONT_FACE - 0.004]}>
             <boxGeometry args={[0.018, h * 0.7, 0.008]} />
             <meshStandardMaterial color="#3a3f47" metalness={0.4} roughness={0.5} />
           </mesh>
         ))}
-        {/* orange pull tab + green activity LED */}
         <mesh position={[w / 2 - 0.03, h * 0.26, FRONT_FACE - 0.006]}>
           <boxGeometry args={[0.014, 0.012, 0.01]} />
           <meshStandardMaterial color="#5a2600" emissive="#ff7a1a" emissiveIntensity={1.6} />
@@ -89,15 +98,13 @@ function Unit({ startU, heightU, kind, partId, onSelect, onHover, onUnhover }) {
           <boxGeometry args={[0.014, 0.008, 0.01]} />
           <meshStandardMaterial color="#0a3d14" emissive="#33ff66" emissiveIntensity={2.2} />
         </mesh>
-      </group>
+      </>
     );
-  }
-
-  if (kind === 'switch') {
+  } else if (kind === 'switch') {
     const depth = 0.35;
     const n = 12;
-    return (
-      <group position={[0, y, 0]} {...handlers}>
+    content = (
+      <>
         <mesh position={[0, 0, FRONT_FACE + depth / 2]}>
           <boxGeometry args={[w, h, depth]} />
           <meshStandardMaterial color="#14161a" metalness={0.4} roughness={0.5} />
@@ -108,15 +115,13 @@ function Unit({ startU, heightU, kind, partId, onSelect, onHover, onUnhover }) {
             <meshStandardMaterial color="#062611" emissive={k % 4 === 0 ? '#ffb020' : '#33ff66'} emissiveIntensity={2.6} />
           </mesh>
         ))}
-      </group>
+      </>
     );
-  }
-
-  if (kind === 'storage') {
+  } else if (kind === 'storage') {
     const depth = 0.5;
     const n = 12;
-    return (
-      <group position={[0, y, 0]} {...handlers}>
+    content = (
+      <>
         <mesh position={[0, 0, FRONT_FACE + depth / 2]}>
           <boxGeometry args={[w, h, depth]} />
           <meshStandardMaterial color="#8b9099" metalness={0.3} roughness={0.5} />
@@ -127,14 +132,12 @@ function Unit({ startU, heightU, kind, partId, onSelect, onHover, onUnhover }) {
             <meshStandardMaterial color="#5a5f66" metalness={0.4} roughness={0.5} />
           </mesh>
         ))}
-      </group>
+      </>
     );
-  }
-
-  if (kind === 'pdu') {
+  } else if (kind === 'pdu') {
     const depth = 0.5;
-    return (
-      <group position={[0, y, 0]} {...handlers}>
+    content = (
+      <>
         <mesh position={[0, 0, FRONT_FACE + depth / 2]}>
           <boxGeometry args={[w, h, depth]} />
           <meshStandardMaterial color="#0c0e12" metalness={0.4} roughness={0.5} />
@@ -143,11 +146,19 @@ function Unit({ startU, heightU, kind, partId, onSelect, onHover, onUnhover }) {
           <boxGeometry args={[w * 0.42, 0.07, 0.006]} />
           <meshStandardMaterial color="#08222f" emissive="#2bb0ff" emissiveIntensity={1.6} />
         </mesh>
-      </group>
+      </>
     );
+  } else {
+    return null;
   }
 
-  return null;
+  return (
+    <group position={[0, y, 0]}>
+      <group ref={slide} userData={{ partId }} {...handlers}>
+        {content}
+      </group>
+    </group>
+  );
 }
 
 /**
@@ -158,6 +169,7 @@ export default function Rack({
   position = [0, 0, 0],
   rotationY = 0,
   units = [],
+  pulled,
   onSelect,
   onHover,
   onUnhover,
@@ -180,7 +192,7 @@ export default function Rack({
         ))}
       </Instances>
       {units.map((u, i) => (
-        <Unit key={i} {...u} onSelect={onSelect} onHover={onHover} onUnhover={onUnhover} />
+        <Unit key={i} {...u} pulled={pulled} onSelect={onSelect} onHover={onHover} onUnhover={onUnhover} />
       ))}
     </group>
   );
