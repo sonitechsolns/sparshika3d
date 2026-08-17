@@ -195,23 +195,6 @@ function Racks({ onSelect, onHover, onUnhover }) {
   );
 }
 
-// --- Two CRAC units (white/grey, 0.6m wide x 2m tall) against the side walls.
-function CRACUnits() {
-  const mat = <meshStandardMaterial color="#c8ccd2" metalness={0.2} roughness={0.5} />;
-  return (
-    <group>
-      <mesh position={[-3.6, 1.0, HALF.W - 0.45]} castShadow>
-        <boxGeometry args={[0.7, 2.0, 0.8]} />
-        {mat}
-      </mesh>
-      <mesh position={[3.6, 1.0, -(HALF.W - 0.45)]} castShadow>
-        <boxGeometry args={[0.7, 2.0, 0.8]} />
-        {mat}
-      </mesh>
-    </group>
-  );
-}
-
 /**
  * Datacenter room scene. Stage 1: room shell, raised floor, ceiling lights,
  * cable trays, CRAC units, and mood lighting. Racks + servers come next.
@@ -231,20 +214,24 @@ export default function Datacenter() {
 
   return (
     <group>
-      {/* Mood lighting: cool ambient, cool-white aisle fill, teal floor accents. */}
-      <ambientLight intensity={0.3} color="#aebfd0" />
-      <hemisphereLight args={['#3a4b5c', '#06080c', 0.5]} />
-      <pointLight position={[-2.2, 1.7, 0]} intensity={5} distance={7} decay={2} color="#dce6ff" />
-      <pointLight position={[2.2, 1.7, 0]} intensity={5} distance={7} decay={2} color="#dce6ff" />
+      {/* Bright, even room lighting so all six racks read clearly. */}
+      <ambientLight intensity={0.6} color="#b6c6d6" />
+      <hemisphereLight args={['#48596a', '#0a0d12', 0.7]} />
+      {/* cool-white fill above every rack */}
+      {[-0.6, 0, 0.6].map((x) => (
+        <React.Fragment key={x}>
+          <pointLight position={[x, 1.95, -1.25]} intensity={4.5} distance={5} decay={2} color="#e2ecff" />
+          <pointLight position={[x, 1.95, 1.25]} intensity={4.5} distance={5} decay={2} color="#e2ecff" />
+        </React.Fragment>
+      ))}
+      {/* teal floor-vent accents */}
       <pointLight position={[-3, 0.3, 2.3]} intensity={3} distance={5} decay={2} color="#35e0c6" />
       <pointLight position={[3, 0.3, -2.3]} intensity={3} distance={5} decay={2} color="#35e0c6" />
-      <pointLight position={[3, 0.3, 2.3]} intensity={2} distance={5} decay={2} color="#2b8fff" />
 
       <Floor />
       <Shell />
       <CeilingLights />
       <CableTrays />
-      <CRACUnits />
       <Racks onSelect={onSelect} onHover={onHover} onUnhover={onUnhover} />
 
       {/* Screen-space cards (no distanceFactor) so they stay a readable size at
