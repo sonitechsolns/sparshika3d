@@ -64,9 +64,8 @@ function App() {
             target={[-0.5, 0.8, 0]}
             enableDamping
             dampingFactor={0.05}
-            minDistance={1.5}
-            maxDistance={12}
-            maxPolarAngle={Math.PI / 2 + 0.05}
+            minDistance={1}
+            maxDistance={22}
           />
         </Canvas>
       </main>

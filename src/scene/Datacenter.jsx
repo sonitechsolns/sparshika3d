@@ -80,23 +80,23 @@ function Shell() {
       {/* long side walls (z = ±W/2) */}
       <mesh position={[0, ROOM.H / 2, -HALF.W]}>
         <boxGeometry args={[ROOM.L, ROOM.H, 0.1]} />
-        <meshStandardMaterial color={wall} roughness={0.9} />
+        <meshStandardMaterial color={wall} roughness={0.9} transparent opacity={0.2} />
       </mesh>
       <mesh position={[0, ROOM.H / 2, HALF.W]}>
         <boxGeometry args={[ROOM.L, ROOM.H, 0.1]} />
-        <meshStandardMaterial color={wall} roughness={0.9} />
+        <meshStandardMaterial color={wall} roughness={0.9} transparent opacity={0.2} />
       </mesh>
 
       {/* solid end wall (+X) */}
       <mesh position={[HALF.L, ROOM.H / 2, 0]}>
         <boxGeometry args={[0.1, ROOM.H, ROOM.W]} />
-        <meshStandardMaterial color={wall} roughness={0.9} />
+        <meshStandardMaterial color={wall} roughness={0.9} transparent opacity={0.2} />
       </mesh>
 
       {/* end wall (-X) with a glass door */}
       <mesh position={[-HALF.L, ROOM.H / 2, 0]}>
         <boxGeometry args={[0.1, ROOM.H, ROOM.W]} />
-        <meshStandardMaterial color={wall} roughness={0.9} />
+        <meshStandardMaterial color={wall} roughness={0.9} transparent opacity={0.2} />
       </mesh>
       <mesh position={[-HALF.L + 0.06, 1.05, 0]}>
         <boxGeometry args={[0.05, 2.1, 1.3]} />
@@ -157,11 +157,10 @@ function CableTrays() {
 
 // --- Six racks in a hot/cold-aisle layout. Rows sit either side of the central
 //     hot aisle; each rack's front faces outward to the cold aisles.
-const SW = [{ startU: 40, heightU: 1, kind: 'switch' }, { startU: 38, heightU: 1, kind: 'switch' },
-            { startU: 36, heightU: 1, kind: 'switch' }, { startU: 20, heightU: 1, kind: 'switch' }];
-const ST = [{ startU: 38, heightU: 2, kind: 'storage' }, { startU: 35, heightU: 2, kind: 'storage' },
-            { startU: 32, heightU: 2, kind: 'storage' }, { startU: 10, heightU: 2, kind: 'storage' }];
-const PD = [{ startU: 2, heightU: 18, kind: 'pdu' }, { startU: 38, heightU: 2, kind: 'pdu' }];
+const SW = [40, 38, 36, 20].map((u) => ({ startU: u, heightU: 1, kind: 'switch', partId: `RACK-03-U${u}` }));
+const ST = [38, 35, 32, 10].map((u) => ({ startU: u, heightU: 2, kind: 'storage', partId: `RACK-05-U${u}` }));
+const PD = [{ startU: 2, heightU: 18, kind: 'pdu', partId: 'RACK-06-U02' },
+            { startU: 38, heightU: 2, kind: 'pdu', partId: 'RACK-06-U38' }];
 
 // 4 R760 servers at the top of each server rack, rest blanking panels.
 const servers = (rackId) =>
@@ -178,7 +177,7 @@ const RACKS = [
   { id: 'RACK-06', pos: [0.6, 0, ROW_Z], rot: Math.PI, units: PD },
 ];
 
-function Racks({ onServerSelect, onServerHover, onServerUnhover }) {
+function Racks({ onSelect, onHover, onUnhover }) {
   return (
     <group>
       {RACKS.map((r) => (
@@ -187,9 +186,9 @@ function Racks({ onServerSelect, onServerHover, onServerUnhover }) {
           position={r.pos}
           rotationY={r.rot}
           units={r.units}
-          onServerSelect={onServerSelect}
-          onServerHover={onServerHover}
-          onServerUnhover={onServerUnhover}
+          onSelect={onSelect}
+          onHover={onHover}
+          onUnhover={onUnhover}
         />
       ))}
     </group>
@@ -226,15 +225,9 @@ export default function Datacenter() {
     obj.getWorldPosition(_v);
     return [_v.x, _v.y + 0.28, _v.z]; // float the card just above the server
   };
-  const onServerSelect = (partId, obj) => setSelected({ partId, pos: worldPos(obj) });
-  const onServerHover = (partId, obj) => {
-    document.body.style.cursor = 'pointer';
-    setHover({ partId, metadata: getMetadata(partId), pos: worldPos(obj) });
-  };
-  const onServerUnhover = () => {
-    document.body.style.cursor = 'auto';
-    setHover(null);
-  };
+  const onSelect = (partId, obj) => setSelected({ partId, pos: worldPos(obj) });
+  const onHover = (partId, obj) => setHover({ partId, metadata: getMetadata(partId), pos: worldPos(obj) });
+  const onUnhover = () => setHover(null);
 
   return (
     <group>
@@ -252,19 +245,17 @@ export default function Datacenter() {
       <CeilingLights />
       <CableTrays />
       <CRACUnits />
-      <Racks
-        onServerSelect={onServerSelect}
-        onServerHover={onServerHover}
-        onServerUnhover={onServerUnhover}
-      />
+      <Racks onSelect={onSelect} onHover={onHover} onUnhover={onUnhover} />
 
+      {/* Screen-space cards (no distanceFactor) so they stay a readable size at
+          any zoom instead of ballooning when you zoom in. */}
       {hover && !selected && (
-        <Html position={hover.pos} center distanceFactor={6}>
+        <Html position={hover.pos} center>
           <HoverCard metadata={hover.metadata} />
         </Html>
       )}
       {selected && (
-        <Html position={selected.pos} center distanceFactor={6} zIndexRange={[100, 0]}>
+        <Html position={selected.pos} center zIndexRange={[100, 0]}>
           <TelemetryPanel partId={selected.partId} onClose={() => setSelected(null)} />
         </Html>
       )}

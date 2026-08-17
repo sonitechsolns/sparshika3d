@@ -127,15 +127,16 @@ const UNKNOWN_IDENTITY = {
  */
 export function getMetadata(partId) {
   if (PART_IDENTITY[partId]) return PART_IDENTITY[partId];
-  // Rack-mounted R760 servers (e.g. RACK-01-U39).
-  if (typeof partId === 'string' && /^RACK-\d+-U\d+$/.test(partId)) {
-    return {
-      brand: 'Dell',
-      model: 'PowerEdge R760',
-      logo: '/dell_logo.png',
-      partNumber: '210-BDXV',
-      serialNumber: `SN-${partId.replace(/-/g, '')}`
-    };
+  // Rack-mounted equipment, keyed by rack (e.g. RACK-01-U39, RACK-03-U40).
+  const m = typeof partId === 'string' && partId.match(/^RACK-(\d+)-U\d+$/);
+  if (m) {
+    const sn = `SN-${partId.replace(/-/g, '')}`;
+    switch (m[1]) {
+      case '03': return { brand: 'Dell', model: 'PowerSwitch S5248F-ON', logo: '/favicon.svg', partNumber: '210-APXX', serialNumber: sn };
+      case '05': return { brand: 'Dell', model: 'PowerVault ME5024', logo: '/dell_logo.png', partNumber: '210-AZBV', serialNumber: sn };
+      case '06': return { brand: 'APC', model: 'Smart-UPS SRT 5kVA', logo: '/favicon.svg', partNumber: 'SRT5KRMXLI', serialNumber: sn };
+      default: return { brand: 'Dell', model: 'PowerEdge R760', logo: '/dell_logo.png', partNumber: '210-BDXV', serialNumber: sn };
+    }
   }
   return {
     ...UNKNOWN_IDENTITY,

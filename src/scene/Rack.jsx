@@ -49,19 +49,24 @@ function Cabinet() {
   );
 }
 
-function Unit({ startU, heightU, kind, partId, onServerSelect, onServerHover, onServerUnhover }) {
+function Unit({ startU, heightU, kind, partId, onSelect, onHover, onUnhover }) {
   const y = uY(startU, heightU);
   const h = heightU * U - 0.004;
   const w = RW - 0.06;
 
+  // Every mounted unit with a partId is selectable → telemetry
+  // (servers, switches, storage, PDU/UPS).
+  const handlers = partId
+    ? {
+        onPointerOver: (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; onHover && onHover(partId, e.object); },
+        onPointerOut: (e) => { e.stopPropagation(); document.body.style.cursor = 'auto'; onUnhover && onUnhover(); },
+        onClick: (e) => { e.stopPropagation(); onSelect && onSelect(partId, e.object); },
+      }
+    : {};
+
   if (kind === 'server') {
     const depth = 0.7;
     const n = 14;
-    const handlers = {
-      onPointerOver: (e) => { e.stopPropagation(); onServerHover && onServerHover(partId, e.object); },
-      onPointerOut: (e) => { e.stopPropagation(); onServerUnhover && onServerUnhover(); },
-      onClick: (e) => { e.stopPropagation(); onServerSelect && onServerSelect(partId, e.object); },
-    };
     return (
       <group position={[0, y, 0]} {...handlers}>
         <mesh position={[0, 0, FRONT_FACE + depth / 2]}>
@@ -92,7 +97,7 @@ function Unit({ startU, heightU, kind, partId, onServerSelect, onServerHover, on
     const depth = 0.35;
     const n = 12;
     return (
-      <group position={[0, y, 0]}>
+      <group position={[0, y, 0]} {...handlers}>
         <mesh position={[0, 0, FRONT_FACE + depth / 2]}>
           <boxGeometry args={[w, h, depth]} />
           <meshStandardMaterial color="#14161a" metalness={0.4} roughness={0.5} />
@@ -111,7 +116,7 @@ function Unit({ startU, heightU, kind, partId, onServerSelect, onServerHover, on
     const depth = 0.5;
     const n = 12;
     return (
-      <group position={[0, y, 0]}>
+      <group position={[0, y, 0]} {...handlers}>
         <mesh position={[0, 0, FRONT_FACE + depth / 2]}>
           <boxGeometry args={[w, h, depth]} />
           <meshStandardMaterial color="#8b9099" metalness={0.3} roughness={0.5} />
@@ -129,7 +134,7 @@ function Unit({ startU, heightU, kind, partId, onServerSelect, onServerHover, on
   if (kind === 'pdu') {
     const depth = 0.5;
     return (
-      <group position={[0, y, 0]}>
+      <group position={[0, y, 0]} {...handlers}>
         <mesh position={[0, 0, FRONT_FACE + depth / 2]}>
           <boxGeometry args={[w, h, depth]} />
           <meshStandardMaterial color="#0c0e12" metalness={0.4} roughness={0.5} />
@@ -153,9 +158,9 @@ export default function Rack({
   position = [0, 0, 0],
   rotationY = 0,
   units = [],
-  onServerSelect,
-  onServerHover,
-  onServerUnhover,
+  onSelect,
+  onHover,
+  onUnhover,
 }) {
   const covered = new Set();
   units.forEach((u) => {
@@ -175,13 +180,7 @@ export default function Rack({
         ))}
       </Instances>
       {units.map((u, i) => (
-        <Unit
-          key={i}
-          {...u}
-          onServerSelect={onServerSelect}
-          onServerHover={onServerHover}
-          onServerUnhover={onServerUnhover}
-        />
+        <Unit key={i} {...u} onSelect={onSelect} onHover={onHover} onUnhover={onUnhover} />
       ))}
     </group>
   );
