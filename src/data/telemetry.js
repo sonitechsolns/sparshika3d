@@ -126,7 +126,18 @@ const UNKNOWN_IDENTITY = {
  * @param {string} partId - The unique identifier of the part.
  */
 export function getMetadata(partId) {
-  return PART_IDENTITY[partId] || {
+  if (PART_IDENTITY[partId]) return PART_IDENTITY[partId];
+  // Rack-mounted R760 servers (e.g. RACK-01-U39).
+  if (typeof partId === 'string' && /^RACK-\d+-U\d+$/.test(partId)) {
+    return {
+      brand: 'Dell',
+      model: 'PowerEdge R760',
+      logo: '/dell_logo.png',
+      partNumber: '210-BDXV',
+      serialNumber: `SN-${partId.replace(/-/g, '')}`
+    };
+  }
+  return {
     ...UNKNOWN_IDENTITY,
     partNumber: `PN-${String(partId).toUpperCase()}`
   };

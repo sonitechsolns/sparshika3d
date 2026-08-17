@@ -1,7 +1,7 @@
 import React, { Suspense, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Environment, ContactShadows, Grid } from '@react-three/drei';
-import Server from './components/Server';
+import { OrbitControls } from '@react-three/drei';
+import Datacenter from './scene/Datacenter';
 import { Hexagon } from 'lucide-react';
 import './index.css';
 
@@ -15,7 +15,7 @@ function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Hexagon className="logo-icon" size={28} />
           <h1>Sparshika 3D</h1>
-          <span className="badge">Pilot Phase 1</span>
+          <span className="badge">Datacenter</span>
         </div>
 
         <div style={{ display: 'flex', gap: '10px', marginLeft: 'auto' }}>
@@ -32,7 +32,7 @@ function App() {
               transition: '0.2s'
             }}
           >
-            {isCoverOpen ? 'CLOSE COVER' : 'OPEN COVER'}
+            {isCoverOpen ? 'CLOSE COVERS' : 'OPEN COVERS'}
           </button>
           <button
             onClick={() => setIsBezelOn(!isBezelOn)}
@@ -47,56 +47,33 @@ function App() {
               transition: '0.2s'
             }}
           >
-            {isBezelOn ? 'BEZEL ON' : 'BEZEL OFF'}
+            {isBezelOn ? 'BEZELS ON' : 'BEZELS OFF'}
           </button>
         </div>
       </header>
 
       <main className="canvas-container">
-        <Canvas camera={{ position: [0.5, 0.5, 0.5], fov: 45 }}>
-          <color attach="background" args={['#0a0b10']} />
-          <ambientLight intensity={0.4} />
-          <directionalLight
-            position={[5, 10, 3]}
-            intensity={2}
-            castShadow
-            shadow-mapSize={1024}
-          />
-          <pointLight position={[-5, 2, -5]} intensity={1.5} color="#4f46e5" />
-          <pointLight position={[5, 2, 5]} intensity={1.5} color="#0ea5e9" />
-
+        <Canvas shadows camera={{ position: [4.2, 2.4, 2.6], fov: 55 }}>
+          <color attach="background" args={['#05070a']} />
           <Suspense fallback={null}>
-            <Server position={[0, 0, 0]} isCoverOpen={isCoverOpen} isBezelOn={isBezelOn} />
-
-            {/* Environment lighting to give metallic materials a premium look */}
-            <Environment preset="city" />
-
-            {/* Ground grid and shadows */}
-            <Grid
-              renderOrder={-1}
-              position={[0, -0.05, 0]}
-              infiniteGrid
-              fadeDistance={5}
-              fadeStrength={5}
-              cellColor="#312e81"
-              sectionColor="#4f46e5"
-            />
-            <ContactShadows position={[0, -0.04, 0]} opacity={0.7} scale={2} blur={1.5} far={1} />
+            <Datacenter isCoverOpen={isCoverOpen} isBezelOn={isBezelOn} />
           </Suspense>
 
           <OrbitControls
             makeDefault
-            minPolarAngle={0}
-            maxPolarAngle={Math.PI / 2 + 0.1}
+            target={[-0.5, 0.8, 0]}
             enableDamping
             dampingFactor={0.05}
+            minDistance={1.5}
+            maxDistance={12}
+            maxPolarAngle={Math.PI / 2 + 0.05}
           />
         </Canvas>
       </main>
 
       <div className="instructions-overlay">
-        <p><strong>Hover</strong> over the part to see metadata.</p>
-        <p><strong>Click</strong> the part to view telemetry data.</p>
+        <p><strong>Hover</strong> over a part to see metadata.</p>
+        <p><strong>Click</strong> a server to view telemetry.</p>
       </div>
     </div>
   );
