@@ -1,6 +1,6 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Instances, Instance, Html } from '@react-three/drei';
-import { useThree } from '@react-three/fiber';
+import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import Rack from './Rack';
 import { getMetadata } from '../data/telemetry';
@@ -234,20 +234,72 @@ function SceneDimmer({ pulled }) {
   return null;
 }
 
+// Smoothly fly the camera to frame a pulled-out unit from the front, so the
+// pop-out is always visible regardless of which way its rack faces. Restores
+// the operator's overview when focus clears.
+function CameraFocus({ focus }) {
+  const { camera, controls } = useThree();
+  const goalPos = useRef(new THREE.Vector3());
+  const goalTarget = useRef(new THREE.Vector3());
+  const home = useRef(null);         // camera pose to return to on reset
+  const active = useRef(false);
+
+  useEffect(() => {
+    if (!controls) return undefined;
+    if (focus) {
+      if (!home.current) {
+        home.current = { pos: camera.position.clone(), target: controls.target.clone() };
+      }
+      const look = new THREE.Vector3(...focus.pos);
+      const dir = new THREE.Vector3(...focus.front);
+      // Stand off in front of the unit, a touch above, angled slightly aside.
+      goalPos.current.copy(look)
+        .add(dir.clone().multiplyScalar(1.7))
+        .add(new THREE.Vector3(0, 0.45, 0));
+      goalTarget.current.copy(look).add(dir.clone().multiplyScalar(0.25));
+      active.current = true;
+    } else if (home.current) {
+      goalPos.current.copy(home.current.pos);
+      goalTarget.current.copy(home.current.target);
+      home.current = null;
+      active.current = true;
+    }
+    return undefined;
+  }, [focus, camera, controls]);
+
+  useFrame((_, delta) => {
+    if (!active.current || !controls) return;
+    const a = 1 - Math.exp(-6 * delta); // frame-rate-independent ease
+    camera.position.lerp(goalPos.current, a);
+    controls.target.lerp(goalTarget.current, a);
+    controls.update();
+    if (camera.position.distanceTo(goalPos.current) < 0.015) active.current = false;
+  });
+  return null;
+}
+
 /**
  * Datacenter room scene. Stage 1: room shell, raised floor, ceiling lights,
  * cable trays, CRAC units, and mood lighting. Racks + servers come next.
  */
 export default function Datacenter() {
   const [hover, setHover] = useState(null);       // { partId, metadata, pos }
-  const [selected, setSelected] = useState(null); // { partId, pos }
+  const [selected, setSelected] = useState(null); // { partId, pos, front }
   const _v = useMemo(() => new THREE.Vector3(), []);
+  const _q = useMemo(() => new THREE.Quaternion(), []);
+  const _f = useMemo(() => new THREE.Vector3(), []);
 
   const worldPos = (obj) => {
     obj.getWorldPosition(_v);
     return [_v.x, _v.y + 0.28, _v.z]; // float the card just above the server
   };
-  const onSelect = (partId, obj) => setSelected({ partId, pos: worldPos(obj) });
+  const onSelect = (partId, obj) => {
+    // World-space front direction (unit's local -Z, the cold-aisle face) so the
+    // camera can frame the pop-out no matter which way the rack faces.
+    obj.getWorldQuaternion(_q);
+    _f.set(0, 0, -1).applyQuaternion(_q).normalize();
+    setSelected({ partId, pos: worldPos(obj), front: [_f.x, _f.y, _f.z] });
+  };
   const onHover = (partId, obj) => setHover({ partId, metadata: getMetadata(partId), pos: worldPos(obj) });
   const onUnhover = () => setHover(null);
 
@@ -278,6 +330,7 @@ export default function Datacenter() {
         onUnhover={onUnhover}
       />
       <SceneDimmer pulled={selected?.partId} />
+      <CameraFocus focus={selected} />
 
       {/* Click-away backdrop: any empty click resets the focus. */}
       <mesh scale={40} onClick={() => setSelected(null)}>
