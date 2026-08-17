@@ -4,7 +4,7 @@ import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import Rack from './Rack';
 import { getMetadata } from '../data/telemetry';
-import TelemetryPanel, { HoverCard } from '../components/TelemetryPanel';
+import { HoverCard } from '../components/TelemetryPanel';
 
 // Room is 10m (X, length) x 6m (Z, width) x 3m (Y, height), centred on origin.
 export const ROOM = { L: 10, W: 6, H: 3 };
@@ -282,9 +282,8 @@ function CameraFocus({ focus }) {
  * Datacenter room scene. Stage 1: room shell, raised floor, ceiling lights,
  * cable trays, CRAC units, and mood lighting. Racks + servers come next.
  */
-export default function Datacenter() {
+export default function Datacenter({ selected, setSelected }) {
   const [hover, setHover] = useState(null);       // { partId, metadata, pos }
-  const [selected, setSelected] = useState(null); // { partId, pos, front }
   const _v = useMemo(() => new THREE.Vector3(), []);
   const _q = useMemo(() => new THREE.Quaternion(), []);
   const _f = useMemo(() => new THREE.Vector3(), []);
@@ -338,16 +337,12 @@ export default function Datacenter() {
         <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.BackSide} />
       </mesh>
 
-      {/* Screen-space cards (no distanceFactor) so they stay a readable size at
-          any zoom instead of ballooning when you zoom in. */}
+      {/* Screen-space hover card (no distanceFactor) so it stays a readable size
+          at any zoom. The selected-unit telemetry is a fixed DOM side panel
+          rendered by App, outside the Canvas. */}
       {hover && !selected && (
         <Html position={hover.pos} center>
           <HoverCard metadata={hover.metadata} />
-        </Html>
-      )}
-      {selected && (
-        <Html position={selected.pos} center zIndexRange={[100, 0]}>
-          <TelemetryPanel partId={selected.partId} large onClose={() => setSelected(null)} />
         </Html>
       )}
     </group>

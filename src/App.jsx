@@ -1,11 +1,21 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import Datacenter from './scene/Datacenter';
+import TelemetryPanel from './components/TelemetryPanel';
 import { Hexagon } from 'lucide-react';
 import './index.css';
 
 function App() {
+  // Selection lives here (above the Canvas) so the telemetry panel can render
+  // as a fixed DOM side panel outside the 3D scene. { partId, pos, front }
+  const [selected, setSelected] = useState(null);
+  const open = !!selected;
+
+  // Keep the last part id so the panel keeps its content while it slides out.
+  const [shownId, setShownId] = useState(null);
+  useEffect(() => { if (selected) setShownId(selected.partId); }, [selected]);
+
   return (
     <div className="app-container">
       <header className="app-header">
@@ -16,11 +26,11 @@ function App() {
         </div>
       </header>
 
-      <main className="canvas-container">
+      <main className={`canvas-container${open ? ' canvas-container--split' : ''}`}>
         <Canvas shadows camera={{ position: [4.2, 2.4, 2.6], fov: 55 }}>
           <color attach="background" args={['#05070a']} />
           <Suspense fallback={null}>
-            <Datacenter />
+            <Datacenter selected={selected} setSelected={setSelected} />
           </Suspense>
 
           <OrbitControls
@@ -34,7 +44,15 @@ function App() {
         </Canvas>
       </main>
 
-      <div className="instructions-overlay">
+      {/* Fixed telemetry side panel — slides in from the right (35%), never
+          overlapping the 3D scene (which shrinks to the left 65%). */}
+      <aside className={`side-panel${open ? ' side-panel--open' : ''}`}>
+        {shownId && (
+          <TelemetryPanel partId={shownId} side onClose={() => setSelected(null)} />
+        )}
+      </aside>
+
+      <div className={`instructions-overlay${open ? ' instructions-overlay--split' : ''}`}>
         <p><strong>Hover</strong> over a part to see metadata.</p>
         <p><strong>Click</strong> a server to view telemetry.</p>
       </div>
