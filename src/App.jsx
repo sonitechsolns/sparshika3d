@@ -1,13 +1,11 @@
 import React, { Suspense, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Environment, ContactShadows, Grid, BakeShadows } from '@react-three/drei';
-import { GPU } from './components/GPU';
+import { OrbitControls, Environment, ContactShadows, Grid } from '@react-three/drei';
 import Server from './components/Server';
 import { Hexagon } from 'lucide-react';
 import './index.css';
 
 function App() {
-  const [activeModel, setActiveModel] = useState('server');
   const [isCoverOpen, setIsCoverOpen] = useState(false);
   const [isBezelOn, setIsBezelOn] = useState(false);
 
@@ -21,48 +19,12 @@ function App() {
         </div>
 
         <div style={{ display: 'flex', gap: '10px', marginLeft: 'auto' }}>
-          {activeModel === 'server' && (
-            <button
-              onClick={() => setIsCoverOpen(!isCoverOpen)}
-              style={{
-                background: isCoverOpen ? '#ff4444' : '#44ff44',
-                color: 'black',
-                border: 'none',
-                padding: '6px 16px',
-                borderRadius: '20px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                transition: '0.2s',
-                marginRight: '10px'
-              }}
-            >
-              {isCoverOpen ? 'CLOSE COVER' : 'OPEN COVER'}
-            </button>
-          )}
-          {activeModel === 'server' && (
-            <button
-              onClick={() => setIsBezelOn(!isBezelOn)}
-              style={{
-                background: isBezelOn ? '#4f46e5' : 'rgba(255,255,255,0.1)',
-                color: 'white',
-                border: '1px solid rgba(255,255,255,0.2)',
-                padding: '6px 16px',
-                borderRadius: '20px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                transition: '0.2s',
-                marginRight: '10px'
-              }}
-            >
-              {isBezelOn ? 'BEZEL ON' : 'BEZEL OFF'}
-            </button>
-          )}
           <button
-            onClick={() => setActiveModel('server')}
+            onClick={() => setIsCoverOpen(!isCoverOpen)}
             style={{
-              background: activeModel === 'server' ? '#4f46e5' : 'rgba(255,255,255,0.1)',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.2)',
+              background: isCoverOpen ? '#ff4444' : '#44ff44',
+              color: 'black',
+              border: 'none',
               padding: '6px 16px',
               borderRadius: '20px',
               cursor: 'pointer',
@@ -70,12 +32,12 @@ function App() {
               transition: '0.2s'
             }}
           >
-            Dell R760 Server
+            {isCoverOpen ? 'CLOSE COVER' : 'OPEN COVER'}
           </button>
           <button
-            onClick={() => setActiveModel('gpu')}
+            onClick={() => setIsBezelOn(!isBezelOn)}
             style={{
-              background: activeModel === 'gpu' ? '#4f46e5' : 'rgba(255,255,255,0.1)',
+              background: isBezelOn ? '#4f46e5' : 'rgba(255,255,255,0.1)',
               color: 'white',
               border: '1px solid rgba(255,255,255,0.2)',
               padding: '6px 16px',
@@ -85,7 +47,7 @@ function App() {
               transition: '0.2s'
             }}
           >
-            NVIDIA RTX 3080 Ti GPU
+            {isBezelOn ? 'BEZEL ON' : 'BEZEL OFF'}
           </button>
         </div>
       </header>
@@ -104,11 +66,7 @@ function App() {
           <pointLight position={[5, 2, 5]} intensity={1.5} color="#0ea5e9" />
 
           <Suspense fallback={null}>
-            {activeModel === 'server' ? (
-              <Server position={[0, 0, 0]} isCoverOpen={isCoverOpen} isBezelOn={isBezelOn} />
-            ) : (
-              <GPU position={[0, 0, 0]} partId="GPU-PILOT-01" />
-            )}
+            <Server position={[0, 0, 0]} isCoverOpen={isCoverOpen} isBezelOn={isBezelOn} />
 
             {/* Environment lighting to give metallic materials a premium look */}
             <Environment preset="city" />
