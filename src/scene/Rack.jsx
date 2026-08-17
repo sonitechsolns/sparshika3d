@@ -15,7 +15,7 @@ const FRONT_FACE = FRONT_Z + 0.03; // front mounting plane
 export const uY = (startU, heightU) => PLINTH + (startU - 1 + heightU / 2) * U;
 
 function Cabinet() {
-  const black = ['#0c0e12', 0.4, 0.55];
+  const black = ['#1b1f26', 0.45, 0.55];
   const [c, m, r] = black;
   const posts = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
   return (
@@ -66,7 +66,7 @@ function Unit({ startU, heightU, kind, partId, onServerSelect, onServerHover, on
       <group position={[0, y, 0]} {...handlers}>
         <mesh position={[0, 0, FRONT_FACE + depth / 2]}>
           <boxGeometry args={[w, h, depth]} />
-          <meshStandardMaterial color="#1a1d22" metalness={0.4} roughness={0.5} />
+          <meshStandardMaterial color="#2a2f38" metalness={0.4} roughness={0.5} />
         </mesh>
         {/* drive bays */}
         {Array.from({ length: n }).map((_, k) => (
@@ -169,7 +169,7 @@ export default function Rack({
       <Cabinet />
       <Instances limit={Math.max(1, blanks.length)} castShadow>
         <boxGeometry args={[RW - 0.06, U - 0.004, 0.02]} />
-        <meshStandardMaterial color="#15181d" metalness={0.3} roughness={0.75} />
+        <meshStandardMaterial color="#20242b" metalness={0.3} roughness={0.75} />
         {blanks.map((by, i) => (
           <Instance key={i} position={[0, by, FRONT_FACE + 0.01]} />
         ))}

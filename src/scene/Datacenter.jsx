@@ -70,10 +70,11 @@ function Shell() {
   const wall = '#171b21';
   return (
     <group>
-      {/* ceiling */}
+      {/* ceiling — single-sided (faces down) so it culls from above and you can
+          orbit into an overhead view of the room */}
       <mesh position={[0, ROOM.H, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <planeGeometry args={[ROOM.L, ROOM.W]} />
-        <meshStandardMaterial color="#0a0c10" roughness={1} side={2} />
+        <meshStandardMaterial color="#0a0c10" roughness={1} />
       </mesh>
 
       {/* long side walls (z = ±W/2) */}
@@ -120,10 +121,10 @@ function CeilingLights() {
         <group key={i}>
           <mesh position={[0, ROOM.H - 0.06, z]}>
             <boxGeometry args={[ROOM.L * 0.88, 0.06, 0.2]} />
-            <meshStandardMaterial color="#eef4ff" emissive="#e4edff" emissiveIntensity={1.8} />
+            <meshStandardMaterial color="#eef4ff" emissive="#e4edff" emissiveIntensity={2.6} />
           </mesh>
-          <pointLight position={[-2.6, ROOM.H - 0.25, z]} intensity={5} distance={7} decay={2} color="#d8e4ff" />
-          <pointLight position={[2.6, ROOM.H - 0.25, z]} intensity={5} distance={7} decay={2} color="#d8e4ff" />
+          <pointLight position={[-2.6, ROOM.H - 0.25, z]} intensity={7} distance={8} decay={2} color="#d8e4ff" />
+          <pointLight position={[2.6, ROOM.H - 0.25, z]} intensity={7} distance={8} decay={2} color="#d8e4ff" />
         </group>
       ))}
     </group>
@@ -237,9 +238,11 @@ export default function Datacenter() {
 
   return (
     <group>
-      {/* Mood lighting: dark ambient + teal floor-vent accents. */}
-      <ambientLight intensity={0.16} color="#9fb2c8" />
-      <hemisphereLight args={['#33424f', '#05070a', 0.35]} />
+      {/* Mood lighting: cool ambient, cool-white aisle fill, teal floor accents. */}
+      <ambientLight intensity={0.3} color="#aebfd0" />
+      <hemisphereLight args={['#3a4b5c', '#06080c', 0.5]} />
+      <pointLight position={[-2.2, 1.7, 0]} intensity={5} distance={7} decay={2} color="#dce6ff" />
+      <pointLight position={[2.2, 1.7, 0]} intensity={5} distance={7} decay={2} color="#dce6ff" />
       <pointLight position={[-3, 0.3, 2.3]} intensity={3} distance={5} decay={2} color="#35e0c6" />
       <pointLight position={[3, 0.3, -2.3]} intensity={3} distance={5} decay={2} color="#35e0c6" />
       <pointLight position={[3, 0.3, 2.3]} intensity={2} distance={5} decay={2} color="#2b8fff" />
