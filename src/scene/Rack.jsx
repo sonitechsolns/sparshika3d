@@ -142,10 +142,6 @@ function Unit({ startU, heightU, kind, partId, pulled, onSelect, onHover, onUnho
           <boxGeometry args={[w, h, depth]} />
           <meshStandardMaterial color="#0c0e12" metalness={0.4} roughness={0.5} />
         </mesh>
-        <mesh position={[0, h * 0.28, FRONT_FACE - 0.005]}>
-          <boxGeometry args={[w * 0.42, 0.07, 0.006]} />
-          <meshStandardMaterial color="#08222f" emissive="#2bb0ff" emissiveIntensity={1.6} />
-        </mesh>
       </>
     );
   } else {
