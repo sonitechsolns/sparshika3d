@@ -1,7 +1,8 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { Instances, Instance } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { getTelemetry } from '../data/telemetry';
 
 export const U = 0.04445;          // 1U in metres
 export const RW = 0.6;             // rack width
@@ -48,6 +49,60 @@ function Cabinet() {
         <meshStandardMaterial color="#0a3d14" emissive="#33ff66" emissiveIntensity={2.2} />
       </mesh>
     </group>
+  );
+}
+
+// Status-LED placement: a small dot on the left edge of a unit's front face,
+// standing slightly proud so it reads from across the room.
+const LED_X = -(RW - 0.06) / 2 + 0.02;
+const LED_Z = FRONT_FACE - 0.016;
+
+// Map a telemetry condition string to a colour + pulse profile. Higher-severity
+// states glow brighter and throb faster so trouble draws the eye from the
+// room overview. Offline shows a dim, steady grey (present but dark).
+function ledStyle(condition) {
+  const c = String(condition || '').toLowerCase();
+  if (c.includes('critical') || c.includes('fault'))
+    return { color: '#ff2b2b', base: 1.4, amp: 2.8, speed: 7.5 };
+  if (c.includes('offline'))
+    return { color: '#4a5568', base: 0.18, amp: 0.0, speed: 0 };
+  if (c.includes('warn') || c.includes('maintenance'))
+    return { color: '#ffb020', base: 1.1, amp: 1.5, speed: 3.4 };
+  return { color: '#2bff6a', base: 1.1, amp: 0.8, speed: 1.7 }; // Optimal
+}
+
+/**
+ * Per-unit status LED wired to its part's telemetry condition. Samples the
+ * condition on a jittered ~2.5s timer (not per frame — getTelemetry advances
+ * the sim walk on every read) and pulses the emissive glow each frame.
+ */
+function StatusLed({ partId }) {
+  const mat = useRef();
+  const [cond, setCond] = useState(() => (partId ? getTelemetry(partId).condition : 'Optimal'));
+  useEffect(() => {
+    if (!partId) return undefined;
+    const id = setInterval(() => setCond(getTelemetry(partId).condition), 2200 + Math.random() * 1200);
+    return () => clearInterval(id);
+  }, [partId]);
+  const style = useMemo(() => ledStyle(cond), [cond]);
+  const phase = useMemo(() => Math.random() * Math.PI * 2, []); // desync the pulses
+  useFrame((state) => {
+    if (!mat.current) return;
+    const t = state.clock.elapsedTime;
+    mat.current.emissiveIntensity = style.base + style.amp * (0.5 + 0.5 * Math.sin(t * style.speed + phase));
+  });
+  if (!partId) return null;
+  return (
+    <mesh position={[LED_X, 0, LED_Z]}>
+      <sphereGeometry args={[0.011, 12, 12]} />
+      <meshStandardMaterial
+        ref={mat}
+        color={style.color}
+        emissive={style.color}
+        emissiveIntensity={style.base}
+        toneMapped={false}
+      />
+    </mesh>
   );
 }
 
@@ -152,6 +207,7 @@ function Unit({ startU, heightU, kind, partId, pulled, onSelect, onHover, onUnho
     <group position={[0, y, 0]}>
       <group ref={slide} userData={{ partId }} {...handlers}>
         {content}
+        <StatusLed partId={partId} />
       </group>
     </group>
   );
