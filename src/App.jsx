@@ -16,6 +16,9 @@ function App() {
   const [shownId, setShownId] = useState(null);
   useEffect(() => { if (selected) setShownId(selected.partId); }, [selected]);
 
+  // Optional hot-aisle airflow overlay (off by default).
+  const [airflow, setAirflow] = useState(false);
+
   return (
     <div className="app-container">
       <header className="app-header">
@@ -24,13 +27,20 @@ function App() {
           <h1>Sparshika 3D</h1>
           <span className="badge">Datacenter</span>
         </div>
+        <button
+          className={`toggle-btn${airflow ? ' toggle-btn--on' : ''}`}
+          onClick={() => setAirflow((a) => !a)}
+          title="Toggle hot-aisle airflow visualization"
+        >
+          <span className="toggle-dot" /> Airflow
+        </button>
       </header>
 
       <main className={`canvas-container${open ? ' canvas-container--split' : ''}`}>
         <Canvas shadows camera={{ position: [0, 6, 9], fov: 50 }}>
           <color attach="background" args={['#05070a']} />
           <Suspense fallback={null}>
-            <Datacenter selected={selected} setSelected={setSelected} />
+            <Datacenter selected={selected} setSelected={setSelected} showAirflow={airflow} />
           </Suspense>
 
           <OrbitControls

@@ -56,6 +56,51 @@ body {
   pointer-events: auto;
 }
 
+/* Airflow toggle, pushed to the right edge of the header. */
+.toggle-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: rgba(22, 24, 32, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.toggle-btn:hover {
+  color: var(--text-main);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3a4048;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.toggle-btn--on {
+  color: #ffd7b0;
+  border-color: rgba(255, 122, 40, 0.6);
+  background: rgba(255, 90, 30, 0.14);
+}
+
+.toggle-btn--on .toggle-dot {
+  background: #ff7a28;
+  box-shadow: 0 0 8px 1px rgba(255, 122, 40, 0.9);
+}
+
 .logo-icon {
   color: var(--accent);
   filter: drop-shadow(0 0 8px var(--accent-glow));

@@ -3,7 +3,7 @@ import { Instances, Instance, Html } from '@react-three/drei';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import Rack from './Rack';
-import { getMetadata } from '../data/telemetry';
+import { getMetadata, getTelemetry } from '../data/telemetry';
 import { HoverCard } from '../components/TelemetryPanel';
 
 // Room is 10m (X, length) x 6m (Z, width) x 3m (Y, height), centred on origin.
@@ -197,6 +197,102 @@ function Racks({ pulled, onSelect, onHover, onUnhover }) {
   );
 }
 
+// --- Hot-aisle airflow --------------------------------------------------------
+// One rising particle plume per rack, emitted from the rack's rear (the hot-
+// aisle face) and drifting up toward the ceiling. Density, speed and colour are
+// driven by the rack's average unit temperature: hotter = denser, faster, redder.
+const PLUME_MAX = 70;      // particle budget per rack
+const PLUME_Y0 = 0.35;     // emit height (just above the raised floor)
+const PLUME_Y1 = 2.7;      // fade-out ceiling height
+const _cOrange = new THREE.Color('#ff8a2a');
+const _cRed = new THREE.Color('#ff2410');
+
+function RackPlume({ x, z, partIds }) {
+  const pts = useRef();
+  const geo = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    const pos = new Float32Array(PLUME_MAX * 3);
+    const seed = new Float32Array(PLUME_MAX); // per-particle speed multiplier
+    for (let i = 0; i < PLUME_MAX; i++) {
+      pos[i * 3] = x + (Math.random() - 0.5) * 0.5;
+      pos[i * 3 + 1] = PLUME_Y0 + Math.random() * (PLUME_Y1 - PLUME_Y0);
+      pos[i * 3 + 2] = z + (Math.random() - 0.5) * 0.22;
+      seed[i] = 0.6 + Math.random() * 0.9;
+    }
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.userData.seed = seed;
+    return g;
+  }, [x, z]);
+
+  // Average temperature of the rack's units, sampled on a jittered timer
+  // (getTelemetry advances the sim walk, so not per frame).
+  const [temp, setTemp] = useState(46);
+  useEffect(() => {
+    if (!partIds || !partIds.length) return undefined;
+    const sample = () => {
+      let s = 0, n = 0;
+      partIds.forEach((pid) => { const t = Number(getTelemetry(pid).temp); if (!Number.isNaN(t)) { s += t; n++; } });
+      if (n) setTemp(s / n);
+    };
+    sample();
+    const id = setInterval(sample, 2500 + Math.random() * 1000);
+    return () => clearInterval(id);
+  }, [partIds]);
+
+  // Map avg temp (~40–80 °C) to a subtle 0..1 intensity.
+  const intensity = Math.max(0, Math.min(1, (temp - 40) / 38));
+
+  useFrame((_, delta) => {
+    const p = pts.current;
+    if (!p) return;
+    const g = p.geometry;
+    const arr = g.attributes.position.array;
+    const seed = g.userData.seed;
+    const d = Math.min(delta, 0.05);
+    const speed = 0.22 + intensity * 0.7;
+    for (let i = 0; i < PLUME_MAX; i++) {
+      arr[i * 3 + 1] += d * speed * seed[i];
+      if (arr[i * 3 + 1] > PLUME_Y1) {                 // recycle at the bottom
+        arr[i * 3 + 1] = PLUME_Y0;
+        arr[i * 3] = x + (Math.random() - 0.5) * 0.5;
+        arr[i * 3 + 2] = z + (Math.random() - 0.5) * 0.22;
+      }
+    }
+    g.attributes.position.needsUpdate = true;
+    g.setDrawRange(0, Math.max(4, Math.round(PLUME_MAX * (0.18 + 0.82 * intensity))));
+    p.material.opacity = 0.13 + intensity * 0.22;      // kept subtle
+    p.material.color.copy(_cOrange).lerp(_cRed, intensity);
+  });
+
+  return (
+    <points ref={pts} geometry={geo}>
+      <pointsMaterial
+        size={0.075}
+        transparent
+        opacity={0.14}
+        depthWrite={false}
+        sizeAttenuation
+        blending={THREE.AdditiveBlending}
+        toneMapped={false}
+      />
+    </points>
+  );
+}
+
+// Emits a plume from the rear (hot-aisle) face of every rack.
+function HotAisleAirflow() {
+  return (
+    <group>
+      {RACKS.map((r) => {
+        const [x, , z] = r.pos;
+        const rearZ = z - Math.sign(z) * 0.5; // 0.5m behind rack centre = the rear face
+        const partIds = r.units.map((u) => u.partId).filter(Boolean);
+        return <RackPlume key={r.id} x={x} z={rearZ} partIds={partIds} />;
+      })}
+    </group>
+  );
+}
+
 // Fade every mesh that isn't part of the pulled-out unit down to 20% while a
 // unit is in focus, restoring them on reset.
 function SceneDimmer({ pulled }) {
@@ -282,7 +378,7 @@ function CameraFocus({ focus }) {
  * Datacenter room scene. Stage 1: room shell, raised floor, ceiling lights,
  * cable trays, CRAC units, and mood lighting. Racks + servers come next.
  */
-export default function Datacenter({ selected, setSelected }) {
+export default function Datacenter({ selected, setSelected, showAirflow = false }) {
   const [hover, setHover] = useState(null);       // { partId, metadata, pos }
   const _v = useMemo(() => new THREE.Vector3(), []);
   const _q = useMemo(() => new THREE.Quaternion(), []);
@@ -330,6 +426,7 @@ export default function Datacenter({ selected, setSelected }) {
       />
       <SceneDimmer pulled={selected?.partId} />
       <CameraFocus focus={selected} />
+      {showAirflow && <HotAisleAirflow />}
 
       {/* Click-away backdrop: any empty click resets the focus. */}
       <mesh scale={40} onClick={() => setSelected(null)}>
