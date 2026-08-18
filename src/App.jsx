@@ -16,8 +16,8 @@ function App() {
   const [shownId, setShownId] = useState(null);
   useEffect(() => { if (selected) setShownId(selected.partId); }, [selected]);
 
-  // Optional hot-aisle airflow overlay (off by default).
-  const [airflow, setAirflow] = useState(false);
+  // Optional hot-aisle heat-map overlay (off by default).
+  const [heatmap, setHeatmap] = useState(false);
 
   return (
     <div className="app-container">
@@ -28,11 +28,11 @@ function App() {
           <span className="badge">Datacenter</span>
         </div>
         <button
-          className={`toggle-btn${airflow ? ' toggle-btn--on' : ''}`}
-          onClick={() => setAirflow((a) => !a)}
-          title="Toggle hot-aisle airflow visualization"
+          className={`toggle-btn${heatmap ? ' toggle-btn--on' : ''}`}
+          onClick={() => setHeatmap((h) => !h)}
+          title="Toggle hot-aisle heat map"
         >
-          <span className="toggle-dot" /> Airflow
+          <span className="toggle-dot" /> Heat Map
         </button>
       </header>
 
@@ -40,7 +40,7 @@ function App() {
         <Canvas shadows camera={{ position: [0, 6, 9], fov: 50 }}>
           <color attach="background" args={['#05070a']} />
           <Suspense fallback={null}>
-            <Datacenter selected={selected} setSelected={setSelected} showAirflow={airflow} />
+            <Datacenter selected={selected} setSelected={setSelected} showHeatmap={heatmap} />
           </Suspense>
 
           <OrbitControls

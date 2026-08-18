@@ -197,99 +197,85 @@ function Racks({ pulled, onSelect, onHover, onUnhover }) {
   );
 }
 
-// --- Hot-aisle airflow --------------------------------------------------------
-// One rising particle plume per rack, emitted from the rack's rear (the hot-
-// aisle face) and drifting up toward the ceiling. Density, speed and colour are
-// driven by the rack's average unit temperature: hotter = denser, faster, redder.
-const PLUME_MAX = 70;      // particle budget per rack
-const PLUME_Y0 = 0.35;     // emit height (just above the raised floor)
-const PLUME_Y1 = 2.7;      // fade-out ceiling height
-const _cOrange = new THREE.Color('#ff8a2a');
-const _cRed = new THREE.Color('#ff2410');
+// --- Hot-aisle heat map -------------------------------------------------------
+// A semi-transparent vertical plane standing in the hot aisle (z=0, between the
+// two rack rows), coloured with a thermal gradient: cool blue at the floor
+// rising to warm orange/red at the top. The average temperature across all
+// racks drives how far up the warm colours reach — hotter = redder.
+const HEAT_VERT = /* glsl */`
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const HEAT_FRAG = /* glsl */`
+  precision mediump float;
+  varying vec2 vUv;
+  uniform float uIntensity;               // 0 (cool) .. 1 (hot)
 
-function RackPlume({ x, z, partIds }) {
-  const pts = useRef();
-  const geo = useMemo(() => {
-    const g = new THREE.BufferGeometry();
-    const pos = new Float32Array(PLUME_MAX * 3);
-    const seed = new Float32Array(PLUME_MAX); // per-particle speed multiplier
-    for (let i = 0; i < PLUME_MAX; i++) {
-      pos[i * 3] = x + (Math.random() - 0.5) * 0.5;
-      pos[i * 3 + 1] = PLUME_Y0 + Math.random() * (PLUME_Y1 - PLUME_Y0);
-      pos[i * 3 + 2] = z + (Math.random() - 0.5) * 0.22;
-      seed[i] = 0.6 + Math.random() * 0.9;
-    }
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.userData.seed = seed;
-    return g;
-  }, [x, z]);
+  vec3 thermal(float t) {                 // blue -> cyan -> orange -> red
+    vec3 blue   = vec3(0.10, 0.32, 0.95);
+    vec3 cyan   = vec3(0.10, 0.72, 0.90);
+    vec3 orange = vec3(1.00, 0.52, 0.13);
+    vec3 red    = vec3(1.00, 0.13, 0.05);
+    if (t < 0.4) return mix(blue, cyan, t / 0.4);
+    if (t < 0.7) return mix(cyan, orange, (t - 0.4) / 0.3);
+    return mix(orange, red, (t - 0.7) / 0.3);
+  }
 
-  // Average temperature of the rack's units, sampled on a jittered timer
-  // (getTelemetry advances the sim walk, so not per frame).
-  const [temp, setTemp] = useState(46);
+  void main() {
+    float h = vUv.y;                                        // 0 floor, 1 top
+    float warmth = clamp(h * (0.25 + uIntensity * 1.2), 0.0, 1.0);
+    vec3 col = thermal(warmth);
+    // soft side/floor fade so it reads as a haze, not a hard billboard
+    float edgeX = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
+    float edgeY = smoothstep(0.0, 0.1, h);
+    float a = (0.32 + 0.34 * uIntensity) * edgeX * edgeY;
+    gl_FragColor = vec4(col, a);
+  }
+`;
+
+function HeatGradient() {
+  const uniforms = useMemo(() => ({ uIntensity: { value: 0.3 } }), []);
+  const target = useRef(0.3);
+  const allIds = useMemo(
+    () => RACKS.flatMap((r) => r.units.map((u) => u.partId).filter(Boolean)),
+    [],
+  );
+
+  // Average temperature across every rack unit, sampled on a timer (getTelemetry
+  // advances the sim walk, so not per frame), mapped to 0..1 intensity.
   useEffect(() => {
-    if (!partIds || !partIds.length) return undefined;
     const sample = () => {
       let s = 0, n = 0;
-      partIds.forEach((pid) => { const t = Number(getTelemetry(pid).temp); if (!Number.isNaN(t)) { s += t; n++; } });
-      if (n) setTemp(s / n);
+      allIds.forEach((pid) => { const t = Number(getTelemetry(pid).temp); if (!Number.isNaN(t)) { s += t; n++; } });
+      if (n) target.current = Math.max(0, Math.min(1, (s / n - 38) / 40));
     };
     sample();
-    const id = setInterval(sample, 2500 + Math.random() * 1000);
+    const id = setInterval(sample, 2500);
     return () => clearInterval(id);
-  }, [partIds]);
+  }, [allIds]);
 
-  // Map avg temp (~40–80 °C) to a subtle 0..1 intensity.
-  const intensity = Math.max(0, Math.min(1, (temp - 40) / 38));
-
+  // Ease toward the sampled intensity for smooth colour transitions.
   useFrame((_, delta) => {
-    const p = pts.current;
-    if (!p) return;
-    const g = p.geometry;
-    const arr = g.attributes.position.array;
-    const seed = g.userData.seed;
-    const d = Math.min(delta, 0.05);
-    const speed = 0.22 + intensity * 0.7;
-    for (let i = 0; i < PLUME_MAX; i++) {
-      arr[i * 3 + 1] += d * speed * seed[i];
-      if (arr[i * 3 + 1] > PLUME_Y1) {                 // recycle at the bottom
-        arr[i * 3 + 1] = PLUME_Y0;
-        arr[i * 3] = x + (Math.random() - 0.5) * 0.5;
-        arr[i * 3 + 2] = z + (Math.random() - 0.5) * 0.22;
-      }
-    }
-    g.attributes.position.needsUpdate = true;
-    g.setDrawRange(0, Math.max(4, Math.round(PLUME_MAX * (0.18 + 0.82 * intensity))));
-    p.material.opacity = 0.13 + intensity * 0.22;      // kept subtle
-    p.material.color.copy(_cOrange).lerp(_cRed, intensity);
+    const u = uniforms.uIntensity;
+    u.value += (target.current - u.value) * Math.min(1, delta * 2);
   });
 
   return (
-    <points ref={pts} geometry={geo}>
-      <pointsMaterial
-        size={0.075}
+    <mesh position={[0, 1.42, 0]} renderOrder={2}>
+      <planeGeometry args={[2.5, 2.85]} />
+      <shaderMaterial
+        uniforms={uniforms}
+        vertexShader={HEAT_VERT}
+        fragmentShader={HEAT_FRAG}
         transparent
-        opacity={0.14}
         depthWrite={false}
-        sizeAttenuation
-        blending={THREE.AdditiveBlending}
+        side={THREE.DoubleSide}
         toneMapped={false}
       />
-    </points>
-  );
-}
-
-// Emits a plume from the rear (hot-aisle) face of every rack.
-function HotAisleAirflow() {
-  return (
-    <group>
-      {RACKS.map((r) => {
-        const [x, , z] = r.pos;
-        const rearZ = z - Math.sign(z) * 0.5; // 0.5m behind rack centre = the rear face
-        const partIds = r.units.map((u) => u.partId).filter(Boolean);
-        return <RackPlume key={r.id} x={x} z={rearZ} partIds={partIds} />;
-      })}
-    </group>
+    </mesh>
   );
 }
 
@@ -378,7 +364,7 @@ function CameraFocus({ focus }) {
  * Datacenter room scene. Stage 1: room shell, raised floor, ceiling lights,
  * cable trays, CRAC units, and mood lighting. Racks + servers come next.
  */
-export default function Datacenter({ selected, setSelected, showAirflow = false }) {
+export default function Datacenter({ selected, setSelected, showHeatmap = false }) {
   const [hover, setHover] = useState(null);       // { partId, metadata, pos }
   const _v = useMemo(() => new THREE.Vector3(), []);
   const _q = useMemo(() => new THREE.Quaternion(), []);
@@ -426,7 +412,7 @@ export default function Datacenter({ selected, setSelected, showAirflow = false 
       />
       <SceneDimmer pulled={selected?.partId} />
       <CameraFocus focus={selected} />
-      {showAirflow && <HotAisleAirflow />}
+      {showHeatmap && <HeatGradient />}
 
       {/* Click-away backdrop: any empty click resets the focus. */}
       <mesh scale={40} onClick={() => setSelected(null)}>
