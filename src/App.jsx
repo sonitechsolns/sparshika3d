@@ -27,7 +27,7 @@ function App() {
       </header>
 
       <main className={`canvas-container${open ? ' canvas-container--split' : ''}`}>
-        <Canvas shadows camera={{ position: [4.2, 2.4, 2.6], fov: 55 }}>
+        <Canvas shadows camera={{ position: [0, 8, 12], fov: 50 }}>
           <color attach="background" args={['#05070a']} />
           <Suspense fallback={null}>
             <Datacenter selected={selected} setSelected={setSelected} />
@@ -35,7 +35,7 @@ function App() {
 
           <OrbitControls
             makeDefault
-            target={[-0.5, 0.8, 0]}
+            target={[0, 0, 0]}
             enableDamping
             dampingFactor={0.05}
             minDistance={1}
