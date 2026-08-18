@@ -27,7 +27,7 @@ function App() {
       </header>
 
       <main className={`canvas-container${open ? ' canvas-container--split' : ''}`}>
-        <Canvas shadows camera={{ position: [0, 8, 12], fov: 50 }}>
+        <Canvas shadows camera={{ position: [0, 6, 9], fov: 50 }}>
           <color attach="background" args={['#05070a']} />
           <Suspense fallback={null}>
             <Datacenter selected={selected} setSelected={setSelected} />

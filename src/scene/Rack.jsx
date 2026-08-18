@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
-import { Instances, Instance } from '@react-three/drei';
+import { Instances, Instance, Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getTelemetry } from '../data/telemetry';
@@ -94,7 +94,7 @@ function StatusLed({ partId }) {
   if (!partId) return null;
   return (
     <mesh position={[LED_X, 0, LED_Z]}>
-      <sphereGeometry args={[0.011, 12, 12]} />
+      <sphereGeometry args={[0.016, 14, 14]} />
       <meshStandardMaterial
         ref={mat}
         color={style.color}
@@ -103,6 +103,114 @@ function StatusLed({ partId }) {
         toneMapped={false}
       />
     </mesh>
+  );
+}
+
+// --- PDU / UPS front detail --------------------------------------------------
+// Outward is local -Z (the cold-aisle face), so "proud of the panel" means a
+// more-negative z. All offsets below follow that convention.
+
+// One horizontal outlet strip: a dark grey bar studded with small socket holes.
+function PduStrip({ y, w }) {
+  const nSock = 8;
+  const span = w * 0.78;
+  return (
+    <group position={[0, y, FRONT_FACE - 0.006]}>
+      <mesh>
+        <boxGeometry args={[w * 0.9, 0.024, 0.014]} />
+        <meshStandardMaterial color="#33383f" metalness={0.55} roughness={0.6} />
+      </mesh>
+      {Array.from({ length: nSock }).map((_, k) => (
+        <mesh key={k} position={[-span / 2 + (k * span) / (nSock - 1), 0, -0.008]}>
+          <boxGeometry args={[0.013, 0.013, 0.006]} />
+          <meshStandardMaterial color="#08090c" metalness={0.2} roughness={0.85} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+// UPS status display: a small green LCD showing battery % and load % as both
+// bar gauges and numeric labels.
+function UpsDisplay({ battery, load, w, y }) {
+  const dw = Math.min(0.28, w * 0.62);
+  const dh = 0.14;
+  const green = '#26e06a';
+  const gauge = (v, gy) => {
+    const barW = dw * 0.84;
+    const fill = Math.max(0.001, (v / 100) * barW);
+    return (
+      <group position={[0, gy, -0.011]}>
+        <mesh>
+          <boxGeometry args={[barW, 0.016, 0.002]} />
+          <meshStandardMaterial color="#0a2a16" emissive={green} emissiveIntensity={0.2} toneMapped={false} />
+        </mesh>
+        <mesh position={[-barW / 2 + fill / 2, 0, -0.002]}>
+          <boxGeometry args={[fill, 0.016, 0.003]} />
+          <meshStandardMaterial color={green} emissive={green} emissiveIntensity={1.7} toneMapped={false} />
+        </mesh>
+      </group>
+    );
+  };
+  return (
+    <group position={[0, y, FRONT_FACE - 0.006]}>
+      {/* bezel + recessed green screen */}
+      <mesh>
+        <boxGeometry args={[dw + 0.03, dh + 0.03, 0.016]} />
+        <meshStandardMaterial color="#191d22" metalness={0.5} roughness={0.6} />
+      </mesh>
+      <mesh position={[0, 0, -0.007]}>
+        <boxGeometry args={[dw, dh, 0.004]} />
+        <meshStandardMaterial color="#04160b" emissive={green} emissiveIntensity={0.5} toneMapped={false} />
+      </mesh>
+      {gauge(battery, dh * 0.16)}
+      {gauge(load, -dh * 0.26)}
+      {/* numeric labels (rotated to face outward, local -Z) */}
+      <Text rotation={[0, Math.PI, 0]} position={[0, dh * 0.34, -0.013]} fontSize={0.028}
+        color={green} anchorX="center" anchorY="middle" letterSpacing={0.02}>
+        {`BAT ${battery}%`}
+      </Text>
+      <Text rotation={[0, Math.PI, 0]} position={[0, -dh * 0.05, -0.013]} fontSize={0.028}
+        color={green} anchorX="center" anchorY="middle" letterSpacing={0.02}>
+        {`LOAD ${load}%`}
+      </Text>
+    </group>
+  );
+}
+
+// Full PDU/UPS front: black chassis + stacked outlet strips + a status display,
+// with the display wired to the part's live load telemetry.
+function PduFront({ partId, w, h }) {
+  const depth = 0.5;
+  const [tel, setTel] = useState(() => (partId ? getTelemetry(partId) : { load: 30, age: 300 }));
+  useEffect(() => {
+    if (!partId) return undefined;
+    const id = setInterval(() => setTel(getTelemetry(partId)), 2500 + Math.random() * 1000);
+    return () => clearInterval(id);
+  }, [partId]);
+  const load = Math.max(0, Math.min(100, Math.round(Number(tel.load) || 0)));
+  const battery = Math.max(80, Math.min(100, Math.round(100 - (Number(tel.age) || 300) / 60)));
+
+  const bigEnough = h > 0.25;                 // tall UPS gets the display; small strip doesn't
+  const nStrips = Math.max(1, Math.min(7, Math.round(h / 0.13)));
+  const topPad = bigEnough ? 0.19 : 0.0;      // reserve the top band for the display
+  const top = h / 2 - 0.03 - topPad;
+  const bot = -h / 2 + 0.03;
+  const strips = [];
+  for (let i = 0; i < nStrips; i++) {
+    const t = nStrips === 1 ? 0.5 : i / (nStrips - 1);
+    strips.push(bot + t * (top - bot));
+  }
+
+  return (
+    <>
+      <mesh position={[0, 0, FRONT_FACE + depth / 2]}>
+        <boxGeometry args={[w, h, depth]} />
+        <meshStandardMaterial color="#0c0e12" metalness={0.4} roughness={0.5} />
+      </mesh>
+      {strips.map((sy, i) => <PduStrip key={i} y={sy} w={w} />)}
+      {bigEnough && <UpsDisplay battery={battery} load={load} w={w} y={h / 2 - 0.11} />}
+    </>
   );
 }
 
@@ -190,15 +298,7 @@ function Unit({ startU, heightU, kind, partId, pulled, onSelect, onHover, onUnho
       </>
     );
   } else if (kind === 'pdu') {
-    const depth = 0.5;
-    content = (
-      <>
-        <mesh position={[0, 0, FRONT_FACE + depth / 2]}>
-          <boxGeometry args={[w, h, depth]} />
-          <meshStandardMaterial color="#0c0e12" metalness={0.4} roughness={0.5} />
-        </mesh>
-      </>
-    );
+    content = <PduFront partId={partId} w={w} h={h} />;
   } else {
     return null;
   }
