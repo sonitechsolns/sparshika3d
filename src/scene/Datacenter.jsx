@@ -163,9 +163,13 @@ const ST = [38, 35, 32, 10].map((u) => ({ startU: u, heightU: 2, kind: 'storage'
 const PD = [{ startU: 2, heightU: 18, kind: 'pdu', partId: 'RACK-06-U02' },
             { startU: 38, heightU: 2, kind: 'pdu', partId: 'RACK-06-U38' }];
 
-// 4 R760 servers at the top of each server rack, rest blanking panels.
+// Seventeen 2U R760s stacked from U9–U42 (~81% of the 42U), the rest blanking
+// panels — a realistically populated server rack.
 const servers = (rackId) =>
-  [39, 37, 35, 33].map((u) => ({ startU: u, heightU: 2, kind: 'server', partId: `${rackId}-U${u}` }));
+  Array.from({ length: 17 }, (_, i) => {
+    const u = 9 + i * 2;
+    return { startU: u, heightU: 2, kind: 'server', partId: `${rackId}-U${u}` };
+  });
 
 const RACKS = [
   // Row 1 (-Z): front faces -Z (no rotation)
