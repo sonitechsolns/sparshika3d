@@ -214,6 +214,148 @@ function PduFront({ partId, w, h }) {
   );
 }
 
+// --- Server internals, revealed when a unit is pulled out and its lid opens ---
+// Laid out front-to-back on the deck: fan bank, RAM, CPU heatsinks, RAM, PSUs.
+function ServerInternals({ w, h, zFront, depth }) {
+  const yb = -h / 2 + 0.006;                     // deck floor
+  const zFan = zFront + 0.16;
+  const zRamF = zFront + 0.30;
+  const zHeat = zFront + 0.46;
+  const zRamB = zFront + 0.60;
+  const zPsu = zFront + depth - 0.07;
+
+  const nFan = 6;
+  const fanR = Math.min(0.045, (w * 0.94) / nFan / 2);
+  const fans = Array.from({ length: nFan }, (_, i) =>
+    -w / 2 + fanR + 0.02 + (i * (w - 0.04 - 2 * fanR)) / (nFan - 1));
+
+  return (
+    <group>
+      {/* motherboard */}
+      <mesh position={[0, yb + 0.002, zFront + depth / 2]}>
+        <boxGeometry args={[w - 0.02, 0.004, depth - 0.04]} />
+        <meshStandardMaterial color="#0e3a24" metalness={0.2} roughness={0.7} />
+      </mesh>
+
+      {/* fan bank (discs facing front) */}
+      {fans.map((x, i) => (
+        <group key={i} position={[x, 0, zFan]} rotation={[Math.PI / 2, 0, 0]}>
+          <mesh>
+            <cylinderGeometry args={[fanR, fanR, h * 0.86, 18]} />
+            <meshStandardMaterial color="#15181d" metalness={0.4} roughness={0.6} />
+          </mesh>
+          <mesh>
+            <cylinderGeometry args={[fanR * 0.4, fanR * 0.4, h * 0.9, 12]} />
+            <meshStandardMaterial color="#2a2f38" metalness={0.5} roughness={0.5} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* two CPU heatsinks with aluminium fins */}
+      {[-w * 0.2, w * 0.2].map((x, i) => (
+        <group key={i} position={[x, 0, zHeat]}>
+          <mesh position={[0, -h * 0.12, 0]}>
+            <boxGeometry args={[w * 0.3, h * 0.2, 0.14]} />
+            <meshStandardMaterial color="#3a3f47" metalness={0.6} roughness={0.4} />
+          </mesh>
+          {Array.from({ length: 9 }).map((_, k) => (
+            <mesh key={k} position={[-w * 0.13 + (k * w * 0.26) / 8, h * 0.03, 0]}>
+              <boxGeometry args={[0.005, h * 0.5, 0.14]} />
+              <meshStandardMaterial color="#aeb4bd" metalness={0.85} roughness={0.25} />
+            </mesh>
+          ))}
+        </group>
+      ))}
+
+      {/* RAM DIMM banks, front and rear of the heatsinks */}
+      {[zRamF, zRamB].map((z, r) => (
+        Array.from({ length: 10 }).map((_, k) => (
+          <mesh key={`${r}-${k}`} position={[-w * 0.42 + (k * w * 0.84) / 9, h * 0.05, z]}>
+            <boxGeometry args={[0.004, h * 0.55, 0.1]} />
+            <meshStandardMaterial color="#14603a" metalness={0.3} roughness={0.6} />
+          </mesh>
+        ))
+      ))}
+
+      {/* rear power supplies */}
+      {[-w * 0.22, w * 0.22].map((x, i) => (
+        <mesh key={i} position={[x, 0, zPsu]}>
+          <boxGeometry args={[w * 0.36, h * 0.8, 0.1]} />
+          <meshStandardMaterial color="#1a1d22" metalness={0.5} roughness={0.5} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+// A 2U server: front bezel with drive bays, a hinged top cover that swings open
+// when the unit is pulled out (`open`), and internals shown only while open.
+function ServerBody({ w, h, open }) {
+  const depth = 0.7;
+  const zc = FRONT_FACE + depth / 2;
+  const zBack = FRONT_FACE + depth;
+  const lid = useRef();
+
+  useFrame((_, delta) => {
+    if (!lid.current) return;
+    const target = open ? 1.95 : 0;               // ~112° open, hinged at the rear
+    lid.current.rotation.x = THREE.MathUtils.damp(lid.current.rotation.x, target, 11, delta);
+  });
+
+  const nDrive = 14;
+  const wallC = '#20242b';
+  return (
+    <>
+      {/* tray: floor + side/rear walls (open top) */}
+      <mesh position={[0, -h / 2 + 0.004, zc]}>
+        <boxGeometry args={[w, 0.008, depth]} />
+        <meshStandardMaterial color={wallC} metalness={0.4} roughness={0.5} />
+      </mesh>
+      {[-1, 1].map((s) => (
+        <mesh key={s} position={[s * (w / 2 - 0.004), 0, zc]}>
+          <boxGeometry args={[0.008, h, depth]} />
+          <meshStandardMaterial color={wallC} metalness={0.4} roughness={0.5} />
+        </mesh>
+      ))}
+      <mesh position={[0, 0, zBack - 0.004]}>
+        <boxGeometry args={[w, h, 0.008]} />
+        <meshStandardMaterial color={wallC} metalness={0.4} roughness={0.5} />
+      </mesh>
+
+      {/* front bezel + drive bays + status LEDs (unchanged closed appearance) */}
+      <mesh position={[0, 0, FRONT_FACE + 0.004]}>
+        <boxGeometry args={[w, h, 0.008]} />
+        <meshStandardMaterial color="#2a2f38" metalness={0.4} roughness={0.5} />
+      </mesh>
+      {Array.from({ length: nDrive }).map((_, k) => (
+        <mesh key={k} position={[-w / 2 + 0.03 + (k * (w - 0.06)) / (nDrive - 1), 0, FRONT_FACE - 0.004]}>
+          <boxGeometry args={[0.018, h * 0.7, 0.008]} />
+          <meshStandardMaterial color="#3a3f47" metalness={0.4} roughness={0.5} />
+        </mesh>
+      ))}
+      <mesh position={[w / 2 - 0.03, h * 0.26, FRONT_FACE - 0.006]}>
+        <boxGeometry args={[0.014, 0.012, 0.01]} />
+        <meshStandardMaterial color="#5a2600" emissive="#ff7a1a" emissiveIntensity={1.6} />
+      </mesh>
+      <mesh position={[w / 2 - 0.03, -h * 0.26, FRONT_FACE - 0.006]}>
+        <boxGeometry args={[0.014, 0.008, 0.01]} />
+        <meshStandardMaterial color="#0a3d14" emissive="#33ff66" emissiveIntensity={2.2} />
+      </mesh>
+
+      {/* internals only while pulled out (one server at a time → cheap) */}
+      {open && <ServerInternals w={w} h={h} zFront={FRONT_FACE} depth={depth} />}
+
+      {/* hinged top cover, pivoting at the rear-top edge */}
+      <group ref={lid} position={[0, h / 2, zBack]}>
+        <mesh position={[0, 0, -depth / 2]}>
+          <boxGeometry args={[w, 0.006, depth]} />
+          <meshStandardMaterial color="#2a2f38" metalness={0.45} roughness={0.45} />
+        </mesh>
+      </group>
+    </>
+  );
+}
+
 function Unit({ startU, heightU, kind, partId, pulled, onSelect, onHover, onUnhover }) {
   const y = uY(startU, heightU);
   const h = heightU * U - 0.004;
@@ -239,30 +381,7 @@ function Unit({ startU, heightU, kind, partId, pulled, onSelect, onHover, onUnho
 
   let content = null;
   if (kind === 'server') {
-    const depth = 0.7;
-    const n = 14;
-    content = (
-      <>
-        <mesh position={[0, 0, FRONT_FACE + depth / 2]}>
-          <boxGeometry args={[w, h, depth]} />
-          <meshStandardMaterial color="#2a2f38" metalness={0.4} roughness={0.5} />
-        </mesh>
-        {Array.from({ length: n }).map((_, k) => (
-          <mesh key={k} position={[-w / 2 + 0.03 + (k * (w - 0.06)) / (n - 1), 0, FRONT_FACE - 0.004]}>
-            <boxGeometry args={[0.018, h * 0.7, 0.008]} />
-            <meshStandardMaterial color="#3a3f47" metalness={0.4} roughness={0.5} />
-          </mesh>
-        ))}
-        <mesh position={[w / 2 - 0.03, h * 0.26, FRONT_FACE - 0.006]}>
-          <boxGeometry args={[0.014, 0.012, 0.01]} />
-          <meshStandardMaterial color="#5a2600" emissive="#ff7a1a" emissiveIntensity={1.6} />
-        </mesh>
-        <mesh position={[w / 2 - 0.03, -h * 0.26, FRONT_FACE - 0.006]}>
-          <boxGeometry args={[0.014, 0.008, 0.01]} />
-          <meshStandardMaterial color="#0a3d14" emissive="#33ff66" emissiveIntensity={2.2} />
-        </mesh>
-      </>
-    );
+    content = <ServerBody w={w} h={h} open={pulled === partId} />;
   } else if (kind === 'switch') {
     const depth = 0.35;
     const n = 12;
