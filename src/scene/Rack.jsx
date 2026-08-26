@@ -71,39 +71,104 @@ function ledStyle(condition) {
   return { color: '#2bff6a', base: 1.1, amp: 0.8, speed: 1.7 }; // Optimal
 }
 
+// Unlit thermal-glow shader for the instanced status LEDs. Each instance carries
+// its own colour and pulse params (base/amp/speed/phase) so a single draw call
+// animates a whole rack's LEDs; raw output keeps them bright like the old
+// emissive material.
+const LED_VERT = /* glsl */`
+  attribute vec4 aData;   // base, amp, speed, phase
+  attribute vec3 aColor;
+  uniform float uTime;
+  varying vec3 vColor;
+  void main() {
+    float glow = aData.x + aData.y * (0.5 + 0.5 * sin(uTime * aData.z + aData.w));
+    vColor = aColor * glow;
+    gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+  }
+`;
+const LED_FRAG = /* glsl */`
+  precision mediump float;
+  varying vec3 vColor;
+  void main() { gl_FragColor = vec4(vColor, 1.0); }
+`;
+
 /**
- * Per-unit status LED wired to its part's telemetry condition. Samples the
- * condition on a jittered ~2.5s timer (not per frame — getTelemetry advances
- * the sim walk on every read) and pulses the emissive glow each frame.
+ * All of a rack's per-unit status LEDs in ONE InstancedMesh (one draw call
+ * instead of one mesh per unit). Each LED's colour + pulse is driven by its
+ * part's telemetry condition, resampled on a ~2.5s timer; the pulled unit's LED
+ * slides out with its chassis. Replaces the old per-unit <StatusLed>.
  */
-function StatusLed({ partId }) {
-  const mat = useRef();
-  const [cond, setCond] = useState(() => (partId ? getTelemetry(partId).condition : 'Optimal'));
-  useEffect(() => {
-    if (!partId) return undefined;
-    const id = setInterval(() => setCond(getTelemetry(partId).condition), 2200 + Math.random() * 1200);
-    return () => clearInterval(id);
-  }, [partId]);
-  const style = useMemo(() => ledStyle(cond), [cond]);
-  const phase = useMemo(() => Math.random() * Math.PI * 2, []); // desync the pulses
-  useFrame((state) => {
-    if (!mat.current) return;
-    const t = state.clock.elapsedTime;
-    mat.current.emissiveIntensity = style.base + style.amp * (0.5 + 0.5 * Math.sin(t * style.speed + phase));
-  });
-  if (!partId) return null;
-  return (
-    <mesh position={[LED_X, 0, LED_Z]}>
-      <sphereGeometry args={[0.016, 14, 14]} />
-      <meshStandardMaterial
-        ref={mat}
-        color={style.color}
-        emissive={style.color}
-        emissiveIntensity={style.base}
-        toneMapped={false}
-      />
-    </mesh>
+function RackLeds({ units, pulled }) {
+  const ref = useRef();
+  const leds = useMemo(
+    () => units.filter((u) => u.partId).map((u) => ({ partId: u.partId, y: uY(u.startU, u.heightU) })),
+    [units],
   );
+  const count = leds.length;
+
+  const { geometry, material, aData, aColor, tmp, slide } = useMemo(() => {
+    const geometry = new THREE.SphereGeometry(0.016, 12, 12);
+    const aData = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, count) * 4), 4);
+    const aColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, count) * 3), 3);
+    geometry.setAttribute('aData', aData);
+    geometry.setAttribute('aColor', aColor);
+    const material = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 } },
+      vertexShader: LED_VERT,
+      fragmentShader: LED_FRAG,
+    });
+    return { geometry, material, aData, aColor, tmp: new THREE.Object3D(), slide: { z: 0 } };
+  }, [count]);
+
+  const applyStyle = (i, partId) => {
+    const s = ledStyle(getTelemetry(partId).condition);
+    const c = new THREE.Color(s.color);
+    aColor.setXYZ(i, c.r, c.g, c.b);
+    aData.setX(i, s.base); aData.setY(i, s.amp); aData.setZ(i, s.speed);
+  };
+
+  // Seed matrices/colours + a per-instance phase, then resample on a timer.
+  useEffect(() => {
+    const m = ref.current;
+    if (!m || !count) return undefined;
+    leds.forEach((led, i) => {
+      tmp.position.set(LED_X, led.y, LED_Z);
+      tmp.updateMatrix();
+      m.setMatrixAt(i, tmp.matrix);
+      applyStyle(i, led.partId);
+      aData.setW(i, Math.random() * Math.PI * 2);
+    });
+    m.instanceMatrix.needsUpdate = true;
+    aColor.needsUpdate = true;
+    aData.needsUpdate = true;
+    const id = setInterval(() => {
+      leds.forEach((led, i) => applyStyle(i, led.partId));
+      aColor.needsUpdate = true;
+      aData.needsUpdate = true;
+    }, 2500);
+    return () => clearInterval(id);
+  }, [leds]);
+
+  // Drive the pulse clock; slide the pulled unit's LED with its chassis.
+  useFrame((state, delta) => {
+    material.uniforms.uTime.value = state.clock.elapsedTime;
+    const m = ref.current;
+    if (!m || !count) return;
+    const idx = leds.findIndex((l) => l.partId === pulled);
+    const prev = slide.z;
+    slide.z = THREE.MathUtils.damp(slide.z, idx >= 0 ? -0.5 : 0, 16, delta);
+    if (Math.abs(slide.z - prev) > 1e-5 || (idx >= 0 && slide.z !== 0)) {
+      leds.forEach((led, i) => {
+        tmp.position.set(LED_X, led.y, LED_Z + (i === idx ? slide.z : 0));
+        tmp.updateMatrix();
+        m.setMatrixAt(i, tmp.matrix);
+      });
+      m.instanceMatrix.needsUpdate = true;
+    }
+  });
+
+  if (!count) return null;
+  return <instancedMesh ref={ref} args={[geometry, material, count]} frustumCulled={false} />;
 }
 
 // --- PDU / UPS front detail --------------------------------------------------
@@ -327,12 +392,13 @@ function ServerBody({ w, h, open }) {
         <boxGeometry args={[w, h, 0.008]} />
         <meshStandardMaterial color="#2a2f38" metalness={0.4} roughness={0.5} />
       </mesh>
-      {Array.from({ length: nDrive }).map((_, k) => (
-        <mesh key={k} position={[-w / 2 + 0.03 + (k * (w - 0.06)) / (nDrive - 1), 0, FRONT_FACE - 0.004]}>
-          <boxGeometry args={[0.018, h * 0.7, 0.008]} />
-          <meshStandardMaterial color="#3a3f47" metalness={0.4} roughness={0.5} />
-        </mesh>
-      ))}
+      <Instances limit={nDrive} range={nDrive}>
+        <boxGeometry args={[0.018, h * 0.7, 0.008]} />
+        <meshStandardMaterial color="#3a3f47" metalness={0.4} roughness={0.5} />
+        {Array.from({ length: nDrive }).map((_, k) => (
+          <Instance key={k} position={[-w / 2 + 0.03 + (k * (w - 0.06)) / (nDrive - 1), 0, FRONT_FACE - 0.004]} />
+        ))}
+      </Instances>
       <mesh position={[w / 2 - 0.03, h * 0.26, FRONT_FACE - 0.006]}>
         <boxGeometry args={[0.014, 0.012, 0.01]} />
         <meshStandardMaterial color="#5a2600" emissive="#ff7a1a" emissiveIntensity={1.6} />
@@ -426,7 +492,6 @@ function Unit({ startU, heightU, kind, partId, pulled, onSelect, onHover, onUnho
     <group position={[0, y, 0]}>
       <group ref={slide} userData={{ partId }} {...handlers}>
         {content}
-        <StatusLed partId={partId} />
       </group>
     </group>
   );
@@ -465,6 +530,7 @@ export default function Rack({
       {units.map((u, i) => (
         <Unit key={i} {...u} pulled={pulled} onSelect={onSelect} onHover={onHover} onUnhover={onUnhover} />
       ))}
+      <RackLeds units={units} pulled={pulled} />
     </group>
   );
 }
