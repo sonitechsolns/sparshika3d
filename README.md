@@ -10,24 +10,45 @@ on-prem agent ──► cloud API (Render + Supabase) ──► this twin (Verce
  sparshika-platform/agent      sparshika-platform/cloud      GET /api/v1/worldstate every 5 s
 ```
 
-## Run
+## What's in the site
+
+| Route | Who | What |
+|---|---|---|
+| `/` | everyone | Landing page |
+| `/demo` | everyone | The demo hall (browser simulation) |
+| `/signup`, `/login`, `/forgot`, `/reset`, `/verify`, `/invite` | everyone | Account pages |
+| `/app` | signed in | Onboarding checklist until the organisation is active, then the live twin |
+| `/app/settings/team` | members | Team, roles, invitations, seats |
+| `/app/settings/agents` | operators+ | Sites, one-time enrolment codes, connected agents |
+| `/admin` | STS staff | Review, approve, reject or suspend organisations and set seats |
+| `/dev/outbox` | local dev | Emails the API "sent" (needs `DEV_MODE=1` on the API) |
+
+Onboarding: sign up → confirm email → request activation → STS approves →
+generate a one-time code → `./setup.sh --enroll CODE --api https://<site>` on
+a server in the hall → invite the team. See `sparshika-platform/cloud/README.md`.
+
+## Run locally
 
 ```bash
+# 1) API (in sparshika-platform) — SQLite accounts, emails to the dev outbox
+DEV_MODE=1 STS_ADMIN_EMAILS=you@example.com APP_URL=http://localhost:5173 \
+  ./.venv/bin/uvicorn cloud.main:app --port 8010
+
+# 2) Site (here) — /api is proxied to :8010, like the Vercel rewrite
 npm install
 npm run dev            # http://localhost:5173
 ```
 
-Point it at an API with `.env.local` (see `.env.example`):
+Sign up with the address in `STS_ADMIN_EMAILS` to get the STS console. Open
+`/dev/outbox` for verification and invitation links.
 
-```
-VITE_API_BASE=http://localhost:8010     # default when unset
-VITE_SITE_ID=dc-west-1
-VITE_STALE_SECONDS=60                   # after this, a part's reading shows as stale
-```
+Preview build with no backend at all: `VITE_MOCK_API=1 npm run build` (hash
+routing, in-browser mock API, preview accounts listed on the sign-in page).
 
-For a full local loop, run the cloud API and the agent from `sparshika-platform`
-(its READMEs cover both), with the agent's `uplink.url` set to
-`http://127.0.0.1:8010/api/v1/ingest`.
+## Deploy
+
+Vercel serves the site; `vercel.json` rewrites `/api/*` to the Render API, so
+the session cookie is first-party. No `VITE_API_BASE` is needed.
 
 ## Live, stale and simulated data
 

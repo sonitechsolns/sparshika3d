@@ -1,97 +1,69 @@
-import React, { Suspense, useState, useEffect } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
-import Datacenter from './scene/Datacenter';
-import TelemetryPanel from './components/TelemetryPanel';
-import CloudStatus from './components/CloudStatus';
-import { Hexagon } from 'lucide-react';
+import React, { Suspense, lazy } from 'react';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import AuthProvider from './lib/AuthProvider';
+import { useAuth } from './lib/session';
+import { MOCK } from './lib/api';
+import Landing from './pages/Landing';
+import { AcceptInvite, Forgot, Login, Reset, Signup, Verify } from './pages/AuthPages';
+import Settings, { OrgSwitch } from './pages/Settings';
+import Admin from './pages/Admin';
+import Outbox from './pages/Outbox';
 import './index.css';
+import './site.css';
 
-function App() {
-  // Selection lives here (above the Canvas) so the telemetry panel can render
-  // as a fixed DOM side panel outside the 3D scene.
-  // { partId, hostId?, pos, front } — hostId is set when a component inside a
-  // pulled-out unit (e.g. one of its fans) is selected; the unit stays open.
-  const [selected, setSelected] = useState(null);
-  // Part requested by a deep link (?part=…), captured before the URL-sync
-  // effect below rewrites the address bar.
-  const [initialPart] = useState(() => new URLSearchParams(window.location.search).get('part'));
-  const open = !!selected;
+// The 3D pages pull in three.js; load them only when someone opens a twin.
+const AppHome = lazy(() => import('./pages/AppHome'));
+const TwinView = lazy(() => import('./pages/TwinView'));
 
-  // Keep the last part id so the panel keeps its content while it slides out.
-  const [shownId, setShownId] = useState(null);
-  useEffect(() => { if (selected) setShownId(selected.partId); }, [selected]);
-
-  // Keep ?part= in the URL in sync with the selection, so the address bar is
-  // always a shareable link to what's on screen (see DeepLink in Datacenter).
-  useEffect(() => {
-    try {
-      const url = new URL(window.location.href);
-      if (selected) url.searchParams.set('part', selected.partId);
-      else url.searchParams.delete('part');
-      window.history.replaceState(null, '', url);
-    } catch {
-      // Sandboxed frames (previews, embeds) may refuse history changes — the
-      // selection still works, the address bar just won't track it.
-    }
-  }, [selected]);
-
-  // Optional hot-aisle heat-map overlay (off by default).
-  const [heatmap, setHeatmap] = useState(false);
-
-  return (
-    <div className="app-container">
-      <header className="app-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Hexagon className="logo-icon" size={28} />
-          <h1>Sparshika 3D</h1>
-          <span className="badge">Datacenter</span>
-        </div>
-        <div className="header-right">
-          <CloudStatus />
-          <button
-            className={`toggle-btn${heatmap ? ' toggle-btn--on' : ''}`}
-            onClick={() => setHeatmap((h) => !h)}
-            title="Toggle hot-aisle heat map"
-          >
-            <span className="toggle-dot" /> Heat Map
-          </button>
-        </div>
-      </header>
-
-      <main className={`canvas-container${open ? ' canvas-container--split' : ''}`}>
-        <Canvas camera={{ position: [-4.5, 2.3, 3.9], fov: 50 }}>
-          <color attach="background" args={['#05070a']} />
-          <Suspense fallback={null}>
-            <Datacenter selected={selected} setSelected={setSelected} showHeatmap={heatmap}
-              initialPart={initialPart} />
-          </Suspense>
-
-          <OrbitControls
-            makeDefault
-            target={[0.9, 1.0, 1.0]}
-            enableDamping
-            dampingFactor={0.05}
-            minDistance={1}
-            maxDistance={22}
-          />
-        </Canvas>
-      </main>
-
-      {/* Fixed telemetry side panel — slides in from the right (35%), never
-          overlapping the 3D scene (which shrinks to the left 65%). */}
-      <aside className={`side-panel${open ? ' side-panel--open' : ''}`}>
-        {shownId && (
-          <TelemetryPanel partId={shownId} side onClose={() => setSelected(null)} />
-        )}
-      </aside>
-
-      <div className={`instructions-overlay${open ? ' instructions-overlay--split' : ''}`}>
-        <p><strong>Hover</strong> over a part to see metadata.</p>
-        <p><strong>Click</strong> a unit to pull it out; click a fan inside to inspect it.</p>
-      </div>
-    </div>
-  );
+function Loading() {
+  return <div className="site" style={{ display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>Loading…</div>;
 }
 
-export default App;
+/** Signed-in only; remembers where you were going. */
+function RequireAuth({ children, sts = false }) {
+  const { me } = useAuth();
+  const loc = useLocation();
+  if (me === undefined) return <Loading />;
+  if (me === null) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
+  if (sts && !me.user.is_sts_admin) return <Navigate to="/app" replace />;
+  return children;
+}
+
+/** Signed-out only (sign in / sign up): signed-in users go to their datacenter. */
+function GuestOnly({ children }) {
+  const { me } = useAuth();
+  if (me === undefined) return <Loading />;
+  if (me) return <Navigate to="/app" replace />;
+  return children;
+}
+
+// Preview builds are hosted at a fixed page URL, so they route by #hash.
+const Router = MOCK ? HashRouter : BrowserRouter;
+
+export default function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        <Suspense fallback={<Loading />}>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/demo" element={<TwinView siteId={null} title="Sparshika demo hall" badge="Simulated" />} />
+            <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
+            <Route path="/signup" element={<GuestOnly><Signup /></GuestOnly>} />
+            <Route path="/forgot" element={<Forgot />} />
+            <Route path="/reset" element={<Reset />} />
+            <Route path="/verify" element={<Verify />} />
+            <Route path="/invite" element={<AcceptInvite />} />
+            <Route path="/app" element={<RequireAuth><AppHome /></RequireAuth>} />
+            <Route path="/app/switch" element={<RequireAuth><OrgSwitch /></RequireAuth>} />
+            <Route path="/app/settings" element={<RequireAuth><Settings /></RequireAuth>} />
+            <Route path="/app/settings/:tab" element={<RequireAuth><Settings /></RequireAuth>} />
+            <Route path="/admin" element={<RequireAuth sts><Admin /></RequireAuth>} />
+            {(MOCK || import.meta.env.DEV) && <Route path="/dev/outbox" element={<Outbox />} />}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </AuthProvider>
+    </Router>
+  );
+}

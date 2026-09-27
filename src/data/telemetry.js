@@ -19,8 +19,8 @@ import { MODELS } from './catalog';
 // (Vite's `base`), e.g. asset('dell_logo.png').
 export const asset = (name) => `${import.meta.env.BASE_URL}${name}`;
 
-const API_BASE = import.meta.env?.VITE_API_BASE || 'http://localhost:8010';
-const SITE_ID = import.meta.env?.VITE_SITE_ID || 'dc-west-1';
+import { apiUrl, apiFetch } from '../lib/api';
+
 const POLL_MS = 5000;
 // A record older than this is shown as stale (default: 6 missed agent cycles).
 export const STALE_MS = (Number(import.meta.env?.VITE_STALE_SECONDS) || 60) * 1000;
@@ -39,11 +39,21 @@ function _emit() {
   _subs.forEach((fn) => fn());
 }
 
+// The site being viewed. null = demo (browser simulation only, no polling).
+let _site = null;
+let _timer = null;
+
 async function _poll() {
+  const site = _site;
+  if (!site) return;
   try {
-    const res = await fetch(
-      `${API_BASE}/api/v1/worldstate?site_id=${encodeURIComponent(SITE_ID)}`
-    );
+    const res = await apiFetch(apiUrl(`/api/v1/worldstate?site_id=${encodeURIComponent(site)}`));
+    if (site !== _site) return;                       // switched sites mid-request
+    if (res.status === 401 || res.status === 403) {
+      _status = { ..._status, state: 'denied', error: res.status === 401 ? 'signed out' : 'no access' };
+      _emit();
+      return;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const snap = await res.json();
     _cache.clear();
@@ -59,14 +69,31 @@ async function _poll() {
   _emit();
 }
 
-let _polling = false;
-function _startPolling() {
-  if (_polling || typeof window === 'undefined') return;
-  _polling = true;
-  _poll(); // prime immediately
-  setInterval(_poll, POLL_MS);
+/**
+ * Start streaming a site's live telemetry (or pass null for the demo, which
+ * runs purely on browser simulation). Returns a stop function.
+ */
+export function startLiveTelemetry(siteId) {
+  if (_timer) clearInterval(_timer);
+  _timer = null;
+  _site = siteId || null;
+  _cache.clear();
+  _lastTs.clear();
+  _history.clear();
+  _status = _site ? { state: 'connecting', lastOk: null, error: null } : { state: 'demo', lastOk: null, error: null };
+  _emit();
+  if (_site && typeof window !== 'undefined') {
+    _poll();
+    _timer = setInterval(_poll, POLL_MS);
+  }
+  return () => {
+    if (_site === siteId) {
+      if (_timer) clearInterval(_timer);
+      _timer = null;
+      _site = null;
+    }
+  };
 }
-_startPolling();
 
 /** Subscribe to poll updates (for useSyncExternalStore). */
 function subscribe(fn) {
@@ -88,7 +115,7 @@ export function getCloudStatus() {
     if (now - ts > STALE_MS) stale++; else live++;
     if (newest == null || ts > newest) newest = ts;
   }
-  return { ..._status, live, stale, newest, site: SITE_ID };
+  return { ..._status, live, stale, newest, site: _site };
 }
 
 // --- Live topology ------------------------------------------------------------

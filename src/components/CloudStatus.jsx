@@ -13,12 +13,16 @@ export default function CloudStatus() {
 
   const s = getCloudStatus();
   let mode, label, sub;
-  if (s.state === 'connecting') {
+  if (s.state === 'demo') {
+    mode = 'connecting'; label = 'Demo hall'; sub = 'simulated data';
+  } else if (s.state === 'denied') {
+    mode = 'offline'; label = s.error === 'signed out' ? 'Signed out' : 'No access'; sub = 'sign in again';
+  } else if (s.state === 'connecting') {
     mode = 'connecting'; label = 'Connecting to cloud…'; sub = '';
   } else if (s.state === 'offline' && !s.live) {
     mode = 'offline'; label = 'Cloud unreachable'; sub = s.stale ? `${s.stale} parts stale` : 'showing simulated data';
   } else if (!s.live && !s.stale) {
-    mode = 'offline'; label = 'No agent data'; sub = `site ${s.site} · simulated data`;
+    mode = 'offline'; label = 'No agent data'; sub = 'no agent connected yet · simulated';
   } else if (!s.live) {
     mode = 'stale'; label = 'Agent silent'; sub = `last reading ${ago(s.newest)}`;
   } else {
