@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { useGLTF, Html } from '@react-three/drei';
 import { getTelemetry, getMetadata, watchMetric, getMetricHistory } from '../data/telemetry';
 import { computeLocalSpinAxis } from '../utils/fanAxis';
-import Sparkline from './Sparkline';
+import Sparkline from '../components/Sparkline';
 
 export function GPU({ position, partId }) {
   const group = useRef();

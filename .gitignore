@@ -13,3 +13,15 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Licensed / large source assets — keep out of git (share via storage instead)
+*.blend
+*.blend1
+
+# Packet captures and other network dumps
+*.pcap
+*.pcapng
+collg*.txt
+
+# Local screenshots from screenshot.cjs
+screenshot*.png

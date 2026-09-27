@@ -3,18 +3,33 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import Datacenter from './scene/Datacenter';
 import TelemetryPanel from './components/TelemetryPanel';
+import CloudStatus from './components/CloudStatus';
 import { Hexagon } from 'lucide-react';
 import './index.css';
 
 function App() {
   // Selection lives here (above the Canvas) so the telemetry panel can render
-  // as a fixed DOM side panel outside the 3D scene. { partId, pos, front }
+  // as a fixed DOM side panel outside the 3D scene.
+  // { partId, hostId?, pos, front } — hostId is set when a component inside a
+  // pulled-out unit (e.g. one of its fans) is selected; the unit stays open.
   const [selected, setSelected] = useState(null);
+  // Part requested by a deep link (?part=…), captured before the URL-sync
+  // effect below rewrites the address bar.
+  const [initialPart] = useState(() => new URLSearchParams(window.location.search).get('part'));
   const open = !!selected;
 
   // Keep the last part id so the panel keeps its content while it slides out.
   const [shownId, setShownId] = useState(null);
   useEffect(() => { if (selected) setShownId(selected.partId); }, [selected]);
+
+  // Keep ?part= in the URL in sync with the selection, so the address bar is
+  // always a shareable link to what's on screen (see DeepLink in Datacenter).
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selected) url.searchParams.set('part', selected.partId);
+    else url.searchParams.delete('part');
+    window.history.replaceState(null, '', url);
+  }, [selected]);
 
   // Optional hot-aisle heat-map overlay (off by default).
   const [heatmap, setHeatmap] = useState(false);
@@ -27,20 +42,24 @@ function App() {
           <h1>Sparshika 3D</h1>
           <span className="badge">Datacenter</span>
         </div>
-        <button
-          className={`toggle-btn${heatmap ? ' toggle-btn--on' : ''}`}
-          onClick={() => setHeatmap((h) => !h)}
-          title="Toggle hot-aisle heat map"
-        >
-          <span className="toggle-dot" /> Heat Map
-        </button>
+        <div className="header-right">
+          <CloudStatus />
+          <button
+            className={`toggle-btn${heatmap ? ' toggle-btn--on' : ''}`}
+            onClick={() => setHeatmap((h) => !h)}
+            title="Toggle hot-aisle heat map"
+          >
+            <span className="toggle-dot" /> Heat Map
+          </button>
+        </div>
       </header>
 
       <main className={`canvas-container${open ? ' canvas-container--split' : ''}`}>
         <Canvas shadows camera={{ position: [0, 6, 9], fov: 50 }}>
           <color attach="background" args={['#05070a']} />
           <Suspense fallback={null}>
-            <Datacenter selected={selected} setSelected={setSelected} showHeatmap={heatmap} />
+            <Datacenter selected={selected} setSelected={setSelected} showHeatmap={heatmap}
+              initialPart={initialPart} />
           </Suspense>
 
           <OrbitControls
@@ -64,7 +83,7 @@ function App() {
 
       <div className={`instructions-overlay${open ? ' instructions-overlay--split' : ''}`}>
         <p><strong>Hover</strong> over a part to see metadata.</p>
-        <p><strong>Click</strong> a server to view telemetry.</p>
+        <p><strong>Click</strong> a unit to pull it out; click a fan inside to inspect it.</p>
       </div>
     </div>
   );

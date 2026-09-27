@@ -1,37 +1,64 @@
 // telemetry.js
-// Single interface for all part telemetry and metadata.
+// Single interface for all part telemetry, metadata and live topology.
 //
-// Telemetry now comes from the Sparshika cloud (the agent → cloud pipeline):
-// a background poller pulls GET /api/v1/worldstate into an in-memory cache, and
-// getTelemetry() reads that cache *synchronously* — keeping the exact same
-// signature/return shape so nothing downstream changes. If the cloud is
-// unreachable (offline dev, cold start) it transparently falls back to the
-// original simulated generator.
+// Telemetry comes from the Sparshika cloud (agent → cloud → here): a background
+// poller pulls GET /api/v1/worldstate into an in-memory cache and
+// getTelemetry() reads that cache synchronously.
+//
+// Every reading says where it came from (`source`):
+//   'live'  — a fresh cloud record for this part
+//   'stale' — the cloud has a record, but it's older than STALE_MS (agent down?)
+//   'sim'   — no cloud record: browser-side simulation for demo/filler units
+// The UI must always show which one it is — simulated numbers are never passed
+// off as real ones.
+
+import { useSyncExternalStore } from 'react';
+
+// Public-folder asset URL that works at a domain root AND under a sub-path
+// (Vite's `base`), e.g. asset('dell_logo.png').
+export const asset = (name) => `${import.meta.env.BASE_URL}${name}`;
 
 const API_BASE = import.meta.env?.VITE_API_BASE || 'http://localhost:8010';
 const SITE_ID = import.meta.env?.VITE_SITE_ID || 'dc-west-1';
 const POLL_MS = 5000;
+// A record older than this is shown as stale (default: 6 missed agent cycles).
+export const STALE_MS = (Number(import.meta.env?.VITE_STALE_SECONDS) || 60) * 1000;
 
 // part_id -> latest TelemetryRecord (canonical schema) from the cloud snapshot.
 const _cache = new Map();
-let _polling = false;
+
+// Connection status for the header pill.
+let _status = { state: 'connecting', lastOk: null, error: null };
+
+// Subscribers (React components) notified after every poll.
+const _subs = new Set();
+let _version = 0;
+function _emit() {
+  _version++;
+  _subs.forEach((fn) => fn());
+}
 
 async function _poll() {
   try {
     const res = await fetch(
       `${API_BASE}/api/v1/worldstate?site_id=${encodeURIComponent(SITE_ID)}`
     );
-    if (!res.ok) return;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const snap = await res.json();
     _cache.clear();
     for (const [partId, record] of Object.entries(snap.records || {})) {
       _cache.set(partId, record);
+      _recordLive(partId, record);
     }
-  } catch {
-    // Cloud unreachable — keep the last cache; getTelemetry falls back to sim.
+    _status = { state: 'online', lastOk: Date.now(), error: null };
+  } catch (err) {
+    // Keep the last cache (it will turn 'stale' by age); report the outage.
+    _status = { ..._status, state: 'offline', error: String(err?.message || err) };
   }
+  _emit();
 }
 
+let _polling = false;
 function _startPolling() {
   if (_polling || typeof window === 'undefined') return;
   _polling = true;
@@ -39,6 +66,52 @@ function _startPolling() {
   setInterval(_poll, POLL_MS);
 }
 _startPolling();
+
+/** Subscribe to poll updates (for useSyncExternalStore). */
+function subscribe(fn) {
+  _subs.add(fn);
+  return () => _subs.delete(fn);
+}
+
+/** Re-render on every poll; returns a version counter. */
+export function useTelemetryVersion() {
+  return useSyncExternalStore(subscribe, () => _version, () => 0);
+}
+
+/** Cloud connection status: { state: 'connecting'|'online'|'offline', lastOk, error, live, stale, newest }. */
+export function getCloudStatus() {
+  const now = Date.now();
+  let live = 0, stale = 0, newest = null;
+  for (const r of _cache.values()) {
+    const ts = Date.parse(r.timestamp);
+    if (now - ts > STALE_MS) stale++; else live++;
+    if (newest == null || ts > newest) newest = ts;
+  }
+  return { ..._status, live, stale, newest, site: SITE_ID };
+}
+
+// --- Live topology ------------------------------------------------------------
+// Parts the agent reported with a rack position (schema v1.1+). The scene
+// places these itself; `fan` parts attach to the unit at the same rack slot.
+let _topoKey = '';
+let _topo = [];
+function _computeTopology() {
+  const parts = [];
+  for (const [partId, r] of _cache) {
+    const p = r.position;
+    if (!p || !r.kind) continue;
+    parts.push({ partId, kind: r.kind, rackId: p.rack_id, startU: p.start_u, heightU: p.height_u });
+  }
+  parts.sort((a, b) => a.partId.localeCompare(b.partId));
+  const key = parts.map((p) => `${p.partId}|${p.kind}|${p.rackId}|${p.startU}|${p.heightU}`).join(';');
+  if (key !== _topoKey) { _topoKey = key; _topo = parts; }
+  return _topo;
+}
+
+/** Live parts with a known rack position. Stable identity until the layout changes. */
+export function useLiveTopology() {
+  return useSyncExternalStore(subscribe, _computeTopology, () => _topo);
+}
 
 // Per-part identity registry. This is the single swappable source of truth
 // for branding metadata — replace this object with a real inventory/DB lookup
@@ -49,36 +122,50 @@ const PART_IDENTITY = {
   'GPU-PILOT-01': {
     brand: 'NVIDIA',
     model: 'GeForce RTX 3080 Ti',
-    logo: '/nvidia_logo.svg',
+    logo: asset('nvidia_logo.svg'),
     partNumber: '900-1G133-2530-000',
     serialNumber: '3080TI-0042-A17'
+  },
+  'R760-A17': {
+    brand: 'Dell',
+    model: 'PowerEdge R760',
+    logo: asset('dell_logo.png'),
+    partNumber: '210-BDXV',
+    serialNumber: 'R760-A17-7H2K'
+  },
+  'TOR-SW-03': {
+    brand: 'Dell',
+    model: 'PowerSwitch S5248F-ON (Top of Rack)',
+    logo: asset('dell_logo.png'),
+    partNumber: '210-APXX',
+    serialNumber: 'TORSW03-5248-1C9D'
   },
   // Dell R760 internal components (revealed when the cover is opened).
   'CPU-R760-01': {
     brand: 'Intel',
     model: 'Xeon Platinum 8480+ (Socket 1)',
-    logo: '/favicon.svg',
+    logo: asset('favicon.svg'),
     partNumber: 'SRM7G-8480',
     serialNumber: 'CPU01-R760-8F2A'
   },
   'CPU-R760-02': {
     brand: 'Intel',
     model: 'Xeon Platinum 8480+ (Socket 2)',
-    logo: '/favicon.svg',
+    logo: asset('favicon.svg'),
     partNumber: 'SRM7G-8480',
     serialNumber: 'CPU02-R760-9B7C'
   },
   'RAM-R760-01': {
     brand: 'Micron',
     model: '64GB DDR5-4800 RDIMM',
-    logo: '/favicon.svg',
+    logo: asset('favicon.svg'),
     partNumber: 'MTC40F2046S1RC48',
     serialNumber: 'RAM01-R760-3E11'
   },
   'DRIVE-R760-01': {
     brand: 'Dell',
     model: '1.92TB NVMe SSD',
-    logo: '/dell_logo.png',
+    logo: asset('dell_logo.png'),
     partNumber: '0M7X8N',
     serialNumber: 'DRV01-R760-7A44'
   },
@@ -86,14 +173,14 @@ const PART_IDENTITY = {
   'GPU-RISER-01': {
     brand: 'NVIDIA',
     model: 'A2 Tensor Core GPU (Riser 1)',
-    logo: '/nvidia_logo.svg',
+    logo: asset('nvidia_logo.svg'),
     partNumber: '900-2G179-0000-001',
     serialNumber: 'A2-R1-R760-5C2D'
   },
   'GPU-RISER-02': {
     brand: 'NVIDIA',
     model: 'A2 Tensor Core GPU (Riser 3)',
-    logo: '/nvidia_logo.svg',
+    logo: asset('nvidia_logo.svg'),
     partNumber: '900-2G179-0000-001',
     serialNumber: 'A2-R3-R760-6E8F'
   }
@@ -104,7 +191,7 @@ for (let i = 1; i <= 6; i++) {
   PART_IDENTITY[`FAN-R760-0${i}`] = {
     brand: 'Dell',
     model: 'Standard Fan Module 80mm',
-    logo: '/dell_logo.png',
+    logo: asset('dell_logo.png'),
     partNumber: 'W8KYY',
     serialNumber: `FAN0${i}-R760-${4200 + i * 137}`
   };
@@ -115,7 +202,7 @@ for (let i = 1; i <= 6; i++) {
 const UNKNOWN_IDENTITY = {
   brand: 'Sparshika Enterprise',
   model: 'Generic Component',
-  logo: '/favicon.svg',
+  logo: asset('favicon.svg'),
   partNumber: 'PN-UNREGISTERED',
   serialNumber: 'SN-000000000'
 };
@@ -127,15 +214,15 @@ const UNKNOWN_IDENTITY = {
  */
 export function getMetadata(partId) {
   if (PART_IDENTITY[partId]) return PART_IDENTITY[partId];
-  // Rack-mounted equipment, keyed by rack (e.g. RACK-01-U39, RACK-03-U40).
+  // Demo rack equipment, keyed by rack slot (e.g. RACK-01-U39).
   const m = typeof partId === 'string' && partId.match(/^RACK-(\d+)-U\d+$/);
   if (m) {
     const sn = `SN-${partId.replace(/-/g, '')}`;
     switch (m[1]) {
-      case '03': return { brand: 'Dell', model: 'PowerSwitch S5248F-ON', logo: '/favicon.svg', partNumber: '210-APXX', serialNumber: sn };
-      case '05': return { brand: 'Dell', model: 'PowerVault ME5024', logo: '/dell_logo.png', partNumber: '210-AZBV', serialNumber: sn };
-      case '06': return { brand: 'APC', model: 'Smart-UPS SRT 5kVA', logo: '/favicon.svg', partNumber: 'SRT5KRMXLI', serialNumber: sn };
-      default: return { brand: 'Dell', model: 'PowerEdge R760', logo: '/dell_logo.png', partNumber: '210-BDXV', serialNumber: sn };
+      case '03': return { brand: 'Dell', model: 'PowerSwitch S5248F-ON', logo: asset('dell_logo.png'), partNumber: '210-APXX', serialNumber: sn };
+      case '05': return { brand: 'Dell', model: 'PowerVault ME5024', logo: asset('dell_logo.png'), partNumber: '210-AZBV', serialNumber: sn };
+      case '06': return { brand: 'APC', model: 'Smart-UPS SRT 5kVA', logo: asset('favicon.svg'), partNumber: 'SRT5KRMXLI', serialNumber: sn };
+      default: return { brand: 'Dell', model: 'PowerEdge R760', logo: asset('dell_logo.png'), partNumber: '210-BDXV', serialNumber: sn };
     }
   }
   return {
@@ -145,31 +232,52 @@ export function getMetadata(partId) {
 }
 
 /**
- * Returns telemetry data for a given part to display on the detail panel.
- * Reads the latest cloud reading for the part; falls back to simulated data
- * when the cloud has no record yet. Return shape is unchanged:
- *   { condition, age, temp (string, 1dp), load }
+ * Condition → severity bucket, shared by LEDs, badges and the panel so a
+ * condition is coloured the same everywhere.
+ * @returns {'critical'|'warning'|'offline'|'optimal'}
+ */
+export function severity(condition, source) {
+  if (source === 'stale') return 'offline';
+  const c = String(condition || '').toLowerCase();
+  if (c.includes('critical') || c.includes('fault')) return 'critical';
+  if (c.includes('offline')) return 'offline';
+  if (c.includes('warn') || c.includes('maintenance')) return 'warning';
+  return 'optimal';
+}
+
+/**
+ * Telemetry for one part. Shape:
+ *   { condition, age, temp (string, 1dp), load, rpm, rpms[], power, voltage,
+ *     forecast, anomaly (0..1 | null), source: 'live'|'stale'|'sim', timestamp (ms | null) }
  * @param {string} partId - The unique identifier of the part.
  */
 export function getTelemetry(partId) {
   const record = _cache.get(partId);
   if (record) {
-    const rpm = Array.isArray(record.metrics.fan_rpm) && record.metrics.fan_rpm.length
-      ? record.metrics.fan_rpm[0]
-      : null;
+    const m = record.metrics;
+    const rpms = Array.isArray(m.fan_rpm) ? m.fan_rpm : [];
+    const ts = Date.parse(record.timestamp);
     return {
-      condition: record.health.condition,      // display-ready label
-      age: record.age_days,                     // days
-      temp: Number(record.metrics.temp_c).toFixed(1), // Celsius
-      load: record.metrics.load_pct,            // percentage
-      rpm                                        // fan RPM (null for non-fans)
+      condition: record.health.condition,
+      age: record.age_days,
+      temp: Number(m.temp_c).toFixed(1),
+      load: m.load_pct,
+      rpm: rpms.length ? rpms[0] : null,
+      rpms,
+      power: m.power_w ?? null,
+      voltage: m.voltage_v ?? null,
+      forecast: record.health.forecast ?? null,
+      anomaly: record.health.anomaly_score ?? null,
+      source: Date.now() - ts > STALE_MS ? 'stale' : 'live',
+      timestamp: ts
     };
   }
   return simulatedTelemetry(partId);
 }
 
 // Coherent simulated fallback: a per-part random walk so repeated reads vary
-// smoothly (which also makes the metric graphs look like real trends, not noise).
+// smoothly (which also makes the metric graphs look like real trends, not
+// noise). Condition labels match the canonical schema's values.
 const _sim = new Map();
 const _step = (mag) => (Math.random() - 0.5) * 2 * mag;
 const _clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -178,64 +286,85 @@ function simulatedTelemetry(partId) {
   const isFan = typeof partId === 'string' && partId.startsWith('FAN-');
   let s = _sim.get(partId);
   if (!s) {
-    s = { age: Math.floor(Math.random() * 900) + 100, temp: 30, load: 40 };
+    s = { age: Math.floor(Math.random() * 900) + 100, temp: 30, load: 25 + Math.random() * 30, base: 25 + Math.random() * 30 };
     _sim.set(partId, s);
   }
+  const common = { power: null, voltage: null, forecast: null, anomaly: null, source: 'sim', timestamp: null };
 
   if (isFan) {
     // Intake air temp walk drives RPM (hotter → faster); load = % of max RPM.
     const MAX_RPM = 18000;
-    s.temp = _clamp(s.temp + _step(1.5), 20, 55);
+    s.temp = _clamp(s.temp + 0.08 * (32 - s.temp) + _step(1.5), 20, 55);
     const rpm = Math.round(4000 + ((s.temp - 20) / 35) * (MAX_RPM - 4000) + _step(200));
     const load = Math.min(100, Math.round((rpm / MAX_RPM) * 100));
     let condition = 'Optimal';
     if (rpm > MAX_RPM * 0.9) condition = 'Warning';
     if (rpm < 2500) condition = 'Critical';
-    return { condition, age: s.age, temp: s.temp.toFixed(1), load, rpm };
+    return { ...common, condition, age: s.age, temp: s.temp.toFixed(1), load, rpm, rpms: [rpm] };
   }
 
-  s.load = _clamp(s.load + _step(5), 5, 98);
+  // Mean-reverting load so demo units don't drift to the rails.
+  s.load = _clamp(s.load + 0.15 * (s.base - s.load) + _step(5), 5, 98);
   const temp = 35 + (s.load / 100) * 45 + _step(1.5);
   let condition = 'Optimal';
-  if (temp > 80) condition = 'Warning - High Temp';
+  if (temp > 80) condition = 'Warning';
   if (s.age > 900) condition = 'Maintenance Recommended';
   if (s.load > 90 && temp > 80) condition = 'Critical';
-  return { condition, age: s.age, temp: temp.toFixed(1), load: Math.round(s.load), rpm: null };
+  return { ...common, condition, age: s.age, temp: temp.toFixed(1), load: Math.round(s.load), rpm: null, rpms: [] };
 }
 
 // --- Metric history for the graph system ---------------------------------
-// A rolling buffer of recent readings per part, sampled on a timer, so the
-// telemetry panel can draw live sparklines for each metric.
-const HISTORY_LEN = 30;
-const _history = new Map();   // partId -> [{ temp, load, rpm, condition, age }]
+// Live parts: one sample per NEW cloud reading (keyed by record timestamp), for
+// every live part from page load — so graphs show real readings, not the same
+// reading repeated. Simulated parts: sampled on a timer while watched.
+const HISTORY_LEN = 40;
+const _history = new Map();   // partId -> [{ t, temp, load, rpm, condition, age, source }]
+const _lastTs = new Map();    // partId -> timestamp of the last live sample
 const _watched = new Set();
 
-function _record(partId) {
-  const t = getTelemetry(partId);
+function _push(partId, sample) {
   let arr = _history.get(partId);
   if (!arr) { arr = []; _history.set(partId, arr); }
-  arr.push({
+  arr.push(sample);
+  if (arr.length > HISTORY_LEN) arr.shift();
+}
+
+function _sampleOf(t) {
+  return {
+    t: t.timestamp ?? Date.now(),
     temp: Number(t.temp),
     load: Number(t.load),
     rpm: t.rpm != null ? Number(t.rpm) : null,
     condition: t.condition,
-    age: t.age
-  });
-  if (arr.length > HISTORY_LEN) arr.shift();
+    age: t.age,
+    source: t.source
+  };
+}
+
+function _recordLive(partId, record) {
+  if (_lastTs.get(partId) === record.timestamp) return;
+  // A part that switches from sim to live starts a fresh, all-real history.
+  if (!_lastTs.has(partId)) _history.delete(partId);
+  _lastTs.set(partId, record.timestamp);
+  _push(partId, _sampleOf(getTelemetry(partId)));
 }
 
 if (typeof window !== 'undefined') {
-  setInterval(() => { for (const pid of _watched) _record(pid); }, 2000);
+  setInterval(() => {
+    for (const pid of _watched) {
+      if (!_cache.has(pid)) _push(pid, _sampleOf(simulatedTelemetry(pid)));
+    }
+  }, 2000);
 }
 
-/** Start recording a part's metric history (idempotent); seeds a short trail. */
+/** Start recording a simulated part's history (idempotent). Live parts are always recorded. */
 export function watchMetric(partId) {
   if (_watched.has(partId)) return;
   _watched.add(partId);
-  for (let i = 0; i < 12; i++) _record(partId);
+  if (!_cache.has(partId)) for (let i = 0; i < 12; i++) _push(partId, _sampleOf(simulatedTelemetry(partId)));
 }
 
-/** Recent samples for a part: [{ temp, load, rpm, condition, age }, ...]. */
+/** Recent samples for a part: [{ t, temp, load, rpm, condition, age, source }, ...]. */
 export function getMetricHistory(partId) {
   return _history.get(partId) || [];
 }
