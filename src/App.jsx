@@ -25,10 +25,15 @@ function App() {
   // Keep ?part= in the URL in sync with the selection, so the address bar is
   // always a shareable link to what's on screen (see DeepLink in Datacenter).
   useEffect(() => {
-    const url = new URL(window.location.href);
-    if (selected) url.searchParams.set('part', selected.partId);
-    else url.searchParams.delete('part');
-    window.history.replaceState(null, '', url);
+    try {
+      const url = new URL(window.location.href);
+      if (selected) url.searchParams.set('part', selected.partId);
+      else url.searchParams.delete('part');
+      window.history.replaceState(null, '', url);
+    } catch {
+      // Sandboxed frames (previews, embeds) may refuse history changes — the
+      // selection still works, the address bar just won't track it.
+    }
   }, [selected]);
 
   // Optional hot-aisle heat-map overlay (off by default).
