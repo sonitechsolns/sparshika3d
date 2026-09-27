@@ -2,16 +2,19 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Instances, Instance, Html } from '@react-three/drei';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import Rack from './Rack';
+import RoomRacks from './RoomRacks';
+import DetailedUnit from './DetailedUnit';
+import { buildRoom } from './roomModel';
 import { N_U } from './rackGeometry';
-import { getMetadata, getTelemetry, useLiveTopology } from '../data/telemetry';
+import { RACK_LAYOUT, CRACS, ROW_Z, RACK_PITCH, RACKS_PER_ROW } from '../data/layout';
+import { modelForKind } from '../data/catalog';
+import { getMetadata, getTelemetry, registerParts, severity, useLiveTopology } from '../data/telemetry';
 import { HoverCard } from '../components/TelemetryPanel';
 
 // Room is 10m (X, length) x 6m (Z, width) x 3m (Y, height), centred on origin.
 const ROOM = { L: 10, W: 6, H: 3 };
 const TILE = 0.6;                 // 600mm raised-floor tiles
 const HALF = { L: ROOM.L / 2, W: ROOM.W / 2 };
-const ROW_Z = 1.25;               // |z| of each rack row's centre line
 
 // --- Raised floor: 600mm tiles + teal-glowing perforated vent tiles in the
 //     cold aisles. Instanced for performance.
@@ -124,8 +127,7 @@ function CeilingLights() {
             <boxGeometry args={[ROOM.L * 0.88, 0.06, 0.2]} />
             <meshStandardMaterial color="#eef4ff" emissive="#e4edff" emissiveIntensity={2.6} />
           </mesh>
-          <pointLight position={[-2.6, ROOM.H - 0.25, z]} intensity={7} distance={8} decay={2} color="#d8e4ff" />
-          <pointLight position={[2.6, ROOM.H - 0.25, z]} intensity={7} distance={8} decay={2} color="#d8e4ff" />
+          <pointLight position={[0, ROOM.H - 0.25, z]} intensity={9} distance={11} decay={1.6} color="#d8e4ff" />
         </group>
       ))}
     </group>
@@ -156,42 +158,13 @@ function CableTrays() {
   );
 }
 
-// --- Six racks in a hot/cold-aisle layout. Rows sit either side of the central
-//     hot aisle; each rack's front faces outward to the cold aisles.
-//
-// The layout below is DEMO filler (simulated in the browser). Parts reported by
-// the on-prem agent carry their own rack position (schema v1.1) and are placed
-// into these racks at runtime by buildRacks(), displacing any demo unit in the
-// same slots — so what the agent reports is what the twin shows.
-const SW = [36, 34, 20].map((u) => ({ startU: u, heightU: 1, kind: 'switch', partId: `RACK-03-U${u}` }));
-const ST = [38, 35, 32, 10].map((u) => ({ startU: u, heightU: 2, kind: 'storage', partId: `RACK-05-U${u}` }));
-const PD = [{ startU: 2, heightU: 18, kind: 'pdu', partId: 'RACK-06-U02' },
-            { startU: 38, heightU: 2, kind: 'pdu', partId: 'RACK-06-U38' }];
-
-// Seventeen 2U R760s stacked from U9–U42 (~81% of the 42U), the rest blanking
-// panels — a realistically populated server rack.
-const servers = (rackId) =>
-  Array.from({ length: 17 }, (_, i) => {
-    const u = 9 + i * 2;
-    return { startU: u, heightU: 2, kind: 'server', partId: `${rackId}-U${u}` };
-  });
-
-const RACK_LAYOUT = [
-  // Row 1 (-Z): front faces -Z (no rotation)
-  { id: 'RACK-01', pos: [-0.6, 0, -ROW_Z], rot: 0, units: servers('RACK-01') },
-  { id: 'RACK-02', pos: [0.0, 0, -ROW_Z], rot: 0, units: servers('RACK-02') },
-  { id: 'RACK-03', pos: [0.6, 0, -ROW_Z], rot: 0, units: SW },
-  // Row 2 (+Z): front faces +Z (rotate 180°)
-  { id: 'RACK-04', pos: [-0.6, 0, ROW_Z], rot: Math.PI, units: servers('RACK-04') },
-  { id: 'RACK-05', pos: [0.0, 0, ROW_Z], rot: Math.PI, units: ST },
-  { id: 'RACK-06', pos: [0.6, 0, ROW_Z], rot: Math.PI, units: PD },
-];
-
-const KNOWN_KINDS = new Set(['server', 'gpu', 'switch', 'storage', 'pdu']);
+// --- Racks -------------------------------------------------------------------
+// The room layout (src/data/layout.js) is DEMO filler, simulated in the browser.
+// Parts reported by the on-prem agent carry their own rack position (schema
+// v1.1) and are merged in here, displacing any demo unit in the same slots — so
+// what the agent reports is what the twin shows.
 const _warned = new Set();
 
-/** Merge live agent parts into the demo layout. Live units win their slots;
- *  fans attach to the live unit at the same rack position. */
 function buildRacks(live) {
   const units = live.filter((p) => p.kind !== 'fan');
   const fans = live.filter((p) => p.kind === 'fan');
@@ -211,7 +184,7 @@ function buildRacks(live) {
         return {
           startU,
           heightU,
-          kind: KNOWN_KINDS.has(u.kind) ? u.kind : 'server',
+          modelId: modelForKind(u.kind, heightU),
           partId: u.partId,
           live: true,
           fans: fans
@@ -230,22 +203,71 @@ function buildRacks(live) {
   });
 }
 
-function Racks({ racks, pulled, onSelect, onSelectComponent, onHover, onUnhover }) {
+// --- Perimeter cooling (CRAC) units at the far end of each row ----------------
+registerParts(CRACS.map((c) => ({ partId: c.partId, modelId: 'vertiv-pdx' })));
+
+function CracUnit({ crac, onSelectObject, onHover, onUnhover }) {
+  const fans = useRef([]);
+  const led = useRef();
+  const rpm = useRef(1200);
+  useEffect(() => {
+    const read = () => {
+      const t = getTelemetry(crac.partId);
+      rpm.current = Number(t.rpm) || 0;
+      const sev = severity(t.condition, t.source);
+      const col = { critical: '#ff2b2b', warning: '#ffb020', offline: '#4a5568', optimal: '#2bff6a' }[sev];
+      if (led.current) { led.current.color.set(col); led.current.emissive.set(col); }
+    };
+    read();
+    const id = setInterval(read, 1500);
+    return () => clearInterval(id);
+  }, [crac.partId]);
+  useFrame((_, dt) => fans.current.forEach((f) => { if (f) f.rotation.y += (rpm.current / 600) * dt * Math.PI * 2; }));
+
+  const W = 0.9, H = 1.95, D = 0.85;
+  const handlers = {
+    onPointerOver: (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; onHover(crac.partId, e.eventObject); },
+    onPointerOut: (e) => { e.stopPropagation(); document.body.style.cursor = 'auto'; onUnhover(); },
+    onClick: (e) => { e.stopPropagation(); onSelectObject(crac.partId, e.eventObject); },
+  };
   return (
-    <group>
-      {racks.map((r) => (
-        <Rack
-          key={r.id}
-          position={r.pos}
-          rotationY={r.rot}
-          units={r.units}
-          pulled={pulled}
-          onSelect={onSelect}
-          onSelectComponent={onSelectComponent}
-          onHover={onHover}
-          onUnhover={onUnhover}
-        />
-      ))}
+    <group position={crac.pos} rotation={[0, crac.rot, 0]}>
+      <group userData={{ partId: crac.partId }} position={[0, H / 2, 0]} {...handlers}>
+        <mesh>
+          <boxGeometry args={[W, H, D]} />
+          <meshStandardMaterial color="#c3c8ce" metalness={0.35} roughness={0.5} />
+        </mesh>
+        {/* front door seams + display + status LED (front is local -Z) */}
+        {[-W / 6, W / 6].map((x) => (
+          <mesh key={x} position={[x, -0.1, -D / 2 - 0.002]}>
+            <boxGeometry args={[0.004, H * 0.85, 0.002]} />
+            <meshStandardMaterial color="#8c929a" />
+          </mesh>
+        ))}
+        <mesh position={[0, H * 0.3, -D / 2 - 0.004]}>
+          <boxGeometry args={[0.16, 0.1, 0.006]} />
+          <meshStandardMaterial color="#06210f" emissive="#27e06c" emissiveIntensity={0.7} toneMapped={false} />
+        </mesh>
+        <mesh position={[0.12, H * 0.3, -D / 2 - 0.006]}>
+          <sphereGeometry args={[0.012, 10, 8]} />
+          <meshStandardMaterial ref={led} color="#2bff6a" emissive="#2bff6a" emissiveIntensity={2} toneMapped={false} />
+        </mesh>
+        {/* return-air grille on top with three EC fans under it */}
+        <mesh position={[0, H / 2 + 0.002, 0]}>
+          <boxGeometry args={[W * 0.9, 0.004, D * 0.8]} />
+          <meshStandardMaterial color="#0b0d10" transparent opacity={0.55} />
+        </mesh>
+        {[-0.28, 0, 0.28].map((x, i) => (
+          <group key={x} position={[x, H / 2 - 0.03, 0]} ref={(el) => { fans.current[i] = el; }}>
+            {Array.from({ length: 5 }).map((_, k) => (
+              <mesh key={k} rotation={[0, (k * Math.PI * 2) / 5, 0.3]}>
+                <boxGeometry args={[0.24, 0.008, 0.05]} />
+                <meshStandardMaterial color="#4a5260" metalness={0.4} roughness={0.5} />
+              </mesh>
+            ))}
+          </group>
+        ))}
+      </group>
     </group>
   );
 }
@@ -289,12 +311,15 @@ const HEAT_FRAG = /* glsl */`
   }
 `;
 
-function HeatGradient({ racks }) {
+const AISLE_X = -3.6 + ((RACKS_PER_ROW - 1) * RACK_PITCH) / 2;
+const AISLE_LEN = RACKS_PER_ROW * RACK_PITCH;
+
+function HeatGradient({ room }) {
   const uniforms = useMemo(() => ({ uIntensity: { value: 0.3 } }), []);
   const target = useRef(0.3);
   const allIds = useMemo(
-    () => racks.flatMap((r) => r.units.map((u) => u.partId).filter(Boolean)),
-    [racks],
+    () => room.units.filter((u) => u.selectable).map((u) => u.partId),
+    [room],
   );
 
   // Average unit temperature, sampled on a timer (getTelemetry advances the sim
@@ -322,8 +347,8 @@ function HeatGradient({ racks }) {
   });
 
   return (
-    <mesh position={[0, 1.42, 0]} renderOrder={2}>
-      <planeGeometry args={[2.5, 2.85]} />
+    <mesh position={[AISLE_X, 1.42, 0]} renderOrder={2}>
+      <planeGeometry args={[AISLE_LEN, 2.85]} />
       <shaderMaterial
         uniforms={uniforms}
         vertexShader={HEAT_VERT}
@@ -426,88 +451,109 @@ function CameraFocus({ focus }) {
  * or a chat message can link straight to a part. Runs once, as soon as the part
  * exists in the scene (live parts appear after the first poll).
  */
-function DeepLink({ want, racks, onSelect, onSelectComponent }) {
-  const { scene } = useThree();
+function DeepLink({ want, room, onSelectUnit, onSelectComponent }) {
   const done = useRef(false);
   useEffect(() => {
     if (done.current) return;
     if (!want) { done.current = true; return; }
     let host = want;
-    for (const r of racks) for (const u of r.units) if (u.fans?.includes(want)) host = u.partId;
-    let obj = null;
-    scene.traverse((o) => { if (!obj && o.userData?.partId === host) obj = o; });
-    if (!obj) return; // not in the scene yet — retry when the racks update
+    for (const u of room.units) if (u.fans?.includes(want)) host = u.partId;
+    const fan = want.match(/^(.*)-FAN-\d+$/);
+    if (fan && room.byPart.has(fan[1])) host = fan[1];
+    const idx = room.byPart.get(host);
+    if (idx == null) return; // not in the room yet — retry when it updates
     done.current = true;
-    onSelect(host, obj);
+    onSelectUnit(room.units[idx]);
     if (host !== want) setTimeout(() => onSelectComponent(want, host), 0);
-  }, [want, racks, scene, onSelect, onSelectComponent]);
+  }, [want, room, onSelectUnit, onSelectComponent]);
   return null;
 }
 
 /**
- * Datacenter room scene. Stage 1: room shell, raised floor, ceiling lights,
- * cable trays, CRAC units, and mood lighting. Racks + servers come next.
+ * The datacenter hall: shell, raised floor, lighting, cable trays, 22 racks of
+ * real hardware (instanced), perimeter cooling, the pulled-out unit in full
+ * detail, heat map, camera focus and hover cards.
  */
 export default function Datacenter({ selected, setSelected, showHeatmap = false, initialPart = null }) {
-  const [hover, setHover] = useState(null);       // { partId, metadata, pos }
+  const [hover, setHover] = useState(null);       // { partId, metadata, pos, inside }
   const live = useLiveTopology();
   const racks = useMemo(() => buildRacks(live), [live]);
+  const room = useMemo(() => buildRoom(racks), [racks]);
   const _v = useMemo(() => new THREE.Vector3(), []);
   const _q = useMemo(() => new THREE.Quaternion(), []);
-  const _f = useMemo(() => new THREE.Vector3(), []);
 
-  const worldPos = (obj) => {
+  const anchorOf = (obj) => {
     obj.getWorldPosition(_v);
-    return [_v.x, _v.y + 0.28, _v.z]; // float the card just above the server
-  };
-  const onSelect = (partId, obj) => {
-    // World-space front direction (unit's local -Z, the cold-aisle face) so the
-    // camera can frame the pop-out no matter which way the rack faces.
     obj.getWorldQuaternion(_q);
-    _f.set(0, 0, -1).applyQuaternion(_q).normalize();
-    setSelected({ partId, pos: worldPos(obj), front: [_f.x, _f.y, _f.z] });
+    const f = new THREE.Vector3(0, 0, -1).applyQuaternion(_q).normalize();
+    return { pos: [_v.x, _v.y + 0.28, _v.z], front: [f.x, f.y, f.z] };
   };
+  const unitPos = (u) => [u.anchor.pos.x, u.anchor.pos.y + 0.28, u.anchor.pos.z];
+
+  const onSelectUnit = (u) =>
+    setSelected({ partId: u.partId, pos: unitPos(u), front: u.anchor.front.toArray() });
+  const onSelectObject = (partId, obj) => setSelected({ partId, ...anchorOf(obj) });
   // A component inside the pulled-out unit (a fan): keep the host open and the
   // camera where it is, just switch the panel to the component.
   const onSelectComponent = (partId, hostId) =>
     setSelected((prev) => (prev ? { ...prev, partId, hostId } : prev));
+  const onHoverUnit = (u) => setHover({ partId: u.partId, metadata: getMetadata(u.partId), pos: unitPos(u), inside: false });
   const onHover = (partId, obj, inside = false) =>
-    setHover({ partId, metadata: getMetadata(partId), pos: worldPos(obj), inside });
-  const pulled = selected ? selected.hostId || selected.partId : undefined;
+    setHover({ partId, metadata: getMetadata(partId), pos: anchorOf(obj).pos, inside });
   const onUnhover = () => setHover(null);
+
+  // Which rack unit is pulled out. `shown` lags `pulled` so a unit can slide
+  // back in before the next one comes out (and before the instanced copy
+  // reappears).
+  const pulled = selected ? selected.hostId || selected.partId : undefined;
+  const pulledUnit = pulled != null && room.byPart.has(pulled) ? pulled : null;
+  const [shown, setShown] = useState(null);
+  useEffect(() => {
+    if (shown == null && pulledUnit) setShown(pulledUnit);
+  }, [shown, pulledUnit]);
+  const shownIdx = shown != null ? room.byPart.get(shown) : undefined;
+  const shownUnit = shownIdx != null ? room.units[shownIdx] : null;
 
   return (
     <group>
-      {/* Bright, even room lighting so all six racks read clearly. */}
-      <ambientLight intensity={0.6} color="#b6c6d6" />
-      <hemisphereLight args={['#48596a', '#0a0d12', 0.7]} />
-      {/* cool-white fill above every rack */}
-      {[-0.6, 0, 0.6].map((x) => (
-        <React.Fragment key={x}>
-          <pointLight position={[x, 1.95, -1.25]} intensity={4.5} distance={5} decay={2} color="#e2ecff" />
-          <pointLight position={[x, 1.95, 1.25]} intensity={4.5} distance={5} decay={2} color="#e2ecff" />
-        </React.Fragment>
-      ))}
-      {/* teal floor-vent accents */}
-      <pointLight position={[-3, 0.3, 2.3]} intensity={3} distance={5} decay={2} color="#35e0c6" />
-      <pointLight position={[3, 0.3, -2.3]} intensity={3} distance={5} decay={2} color="#35e0c6" />
+      <ambientLight intensity={0.55} color="#b6c6d6" />
+      <hemisphereLight args={['#48596a', '#0a0d12', 0.75]} />
+      {/* cold-aisle wash so every rack face reads clearly */}
+      <directionalLight position={[0, 5, -6]} intensity={0.9} color="#e2ecff" />
+      <directionalLight position={[0, 5, 6]} intensity={0.9} color="#e2ecff" />
 
       <Floor />
       <Shell />
       <CeilingLights />
       <CableTrays />
-      <Racks
+      <RoomRacks
+        room={room}
         racks={racks}
-        pulled={pulled}
-        onSelect={onSelect}
-        onSelectComponent={onSelectComponent}
-        onHover={onHover}
+        hidden={shownIdx}
+        onSelectUnit={onSelectUnit}
+        onHoverUnit={onHoverUnit}
         onUnhover={onUnhover}
       />
-      <DeepLink want={initialPart} racks={racks} onSelect={onSelect} onSelectComponent={onSelectComponent} />
+      {shownUnit && (
+        <DetailedUnit
+          key={shownUnit.partId}
+          unit={shownUnit}
+          open={pulled === shownUnit.partId}
+          liveFans={shownUnit.fans}
+          onClosed={() => setShown(null)}
+          onSelectUnit={onSelectUnit}
+          onSelectComponent={onSelectComponent}
+          onHover={onHover}
+          onUnhover={onUnhover}
+        />
+      )}
+      {CRACS.map((c) => (
+        <CracUnit key={c.partId} crac={c} onSelectObject={onSelectObject} onHover={onHover} onUnhover={onUnhover} />
+      ))}
+      <DeepLink want={initialPart} room={room} onSelectUnit={onSelectUnit} onSelectComponent={onSelectComponent} />
       <SceneDimmer pulled={pulled} />
       <CameraFocus focus={selected} />
-      {showHeatmap && <HeatGradient racks={racks} />}
+      {showHeatmap && <HeatGradient room={room} />}
 
       {/* Click-away backdrop: any empty click resets the focus. */}
       <mesh scale={40} onClick={() => setSelected(null)}>

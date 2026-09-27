@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getTelemetry, getMetricHistory, watchMetric, severity } from '../data/telemetry';
+import { getTelemetry, getMetricHistory, watchMetric, severity, getMetadata, getPartInfo } from '../data/telemetry';
 import Sparkline from './Sparkline';
 import { ago } from '../utils/format';
 
@@ -32,12 +32,21 @@ export default function TelemetryPanel({ partId, onClose, large = false, side = 
   const hist = getMetricHistory(partId);
   const cur = getTelemetry(partId);
   const sev = severity(cur.condition, cur.source);
-  const isFan = String(partId).startsWith('FAN-');
+  const isFan = /(^FAN-|-FAN-\d+$)/.test(String(partId));
+  const meta = getMetadata(partId);
+  const host = String(partId).match(/^(.*)-FAN-\d+$/);
+  const info = getPartInfo(host ? host[1] : partId);
+  const where = info?.rackId
+    ? `${info.rackId} · U${info.startU}${info.heightU > 1 ? `–U${info.startU + info.heightU - 1}` : ''}`
+    : null;
 
   return (
     <div className={`detail-panel${large ? ' detail-panel--large' : ''}${side ? ' detail-panel--side' : ''}`}>
       <div className="panel-header">
-        <h4>Telemetry ({partId})</h4>
+        <div className="panel-title">
+          <h4>{partId}</h4>
+          <span className="panel-sub">{meta.brand} {meta.model}{where ? ` · ${where}` : ''}</span>
+        </div>
         <button className="close-btn" onClick={onClose} aria-label="Close">&times;</button>
       </div>
       <div className="panel-body">

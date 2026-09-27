@@ -13,6 +13,7 @@
 // off as real ones.
 
 import { useSyncExternalStore } from 'react';
+import { MODELS } from './catalog';
 
 // Public-folder asset URL that works at a domain root AND under a sub-path
 // (Vite's `base`), e.g. asset('dell_logo.png').
@@ -214,21 +215,57 @@ const UNKNOWN_IDENTITY = {
  */
 export function getMetadata(partId) {
   if (PART_IDENTITY[partId]) return PART_IDENTITY[partId];
-  // Demo rack equipment, keyed by rack slot (e.g. RACK-01-U39).
-  const m = typeof partId === 'string' && partId.match(/^RACK-(\d+)-U\d+$/);
-  if (m) {
-    const sn = `SN-${partId.replace(/-/g, '')}`;
-    switch (m[1]) {
-      case '03': return { brand: 'Dell', model: 'PowerSwitch S5248F-ON', logo: asset('dell_logo.png'), partNumber: '210-APXX', serialNumber: sn };
-      case '05': return { brand: 'Dell', model: 'PowerVault ME5024', logo: asset('dell_logo.png'), partNumber: '210-AZBV', serialNumber: sn };
-      case '06': return { brand: 'APC', model: 'Smart-UPS SRT 5kVA', logo: asset('favicon.svg'), partNumber: 'SRT5KRMXLI', serialNumber: sn };
-      default: return { brand: 'Dell', model: 'PowerEdge R760', logo: asset('dell_logo.png'), partNumber: '210-BDXV', serialNumber: sn };
-    }
+  const info = _parts.get(partId);
+  const model = info && MODELS[info.modelId];
+  if (model) {
+    return {
+      brand: model.vendor,
+      model: model.name,
+      logo: asset(model.logo || 'favicon.svg'),
+      partNumber: model.partNumber || 'PN-UNREGISTERED',
+      serialNumber: serialFor(partId)
+    };
+  }
+  // A fan module inside a demo unit: "<host>-FAN-<n>".
+  const fan = typeof partId === 'string' && partId.match(/^(.*)-FAN-(\d+)$/);
+  if (fan) {
+    const host = getMetadata(fan[1]);
+    return { brand: host.brand, model: `Hot-swap fan module ${fan[2]} (${host.model})`, logo: host.logo,
+      partNumber: 'FAN-MODULE', serialNumber: serialFor(partId) };
   }
   return {
     ...UNKNOWN_IDENTITY,
     partNumber: `PN-${String(partId).toUpperCase()}`
   };
+}
+
+// --- Part registry -------------------------------------------------------
+// The scene registers every unit it draws (model + rack position) so metadata,
+// simulation and the panel's location line all come from one place.
+const _parts = new Map(); // partId -> { modelId, rackId, startU, heightU }
+
+/** Register drawn parts: [{ partId, modelId, rackId?, startU?, heightU? }]. */
+export function registerParts(list) {
+  for (const p of list) if (p.partId) _parts.set(p.partId, p);
+}
+
+/** Where a part is: { modelId, rackId, startU, heightU } or undefined. */
+export function getPartInfo(partId) {
+  return _parts.get(partId);
+}
+
+/** Stable 0..1 hash of a string (FNV-1a), so demo behaviour is repeatable. */
+function hash01(str, salt = 0) {
+  let h = 2166136261 ^ salt;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 100000) / 100000;
+}
+
+function serialFor(partId) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789';
+  let out = '';
+  for (let i = 0; i < 7; i++) out += chars[Math.floor(hash01(partId, i + 1) * chars.length)];
+  return out;
 }
 
 /**
@@ -282,35 +319,93 @@ const _sim = new Map();
 const _step = (mag) => (Math.random() - 0.5) * 2 * mag;
 const _clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-function simulatedTelemetry(partId) {
-  const isFan = typeof partId === 'string' && partId.startsWith('FAN-');
+const DEFAULT_ENV = { tempBase: 25, tempSpan: 45, powerIdle: 150, powerMax: 800, fanMin: 3000, fanMax: 13000, warnTemp: 80 };
+
+// Demo units get a stable "personality" from their id: most are healthy, a few
+// run hot, a few have a failed fan, and some are old enough to need service —
+// so the room looks like a real fleet (a handful of alerts, not a sea of them).
+function _simState(partId) {
   let s = _sim.get(partId);
   if (!s) {
-    s = { age: Math.floor(Math.random() * 900) + 100, temp: 30, load: 25 + Math.random() * 30, base: 25 + Math.random() * 30 };
+    const hIssue = hash01(partId, 11);
+    s = {
+      age: 60 + Math.floor(Math.pow(hash01(partId, 7), 3) * 1000),
+      base: 20 + hash01(partId, 13) * 45,
+      issue: hIssue < 0.012 ? 'fan' : hIssue < 0.03 ? 'hot' : null,
+      deadFan: hash01(partId, 17),
+      temp: 30,
+      rpms: []
+    };
+    s.load = s.base;
     _sim.set(partId, s);
   }
-  const common = { power: null, voltage: null, forecast: null, anomaly: null, source: 'sim', timestamp: null };
+  return s;
+}
 
-  if (isFan) {
-    // Intake air temp walk drives RPM (hotter → faster); load = % of max RPM.
-    const MAX_RPM = 18000;
-    s.temp = _clamp(s.temp + 0.08 * (32 - s.temp) + _step(1.5), 20, 55);
-    const rpm = Math.round(4000 + ((s.temp - 20) / 35) * (MAX_RPM - 4000) + _step(200));
-    const load = Math.min(100, Math.round((rpm / MAX_RPM) * 100));
+function simulatedTelemetry(partId) {
+  const common = { voltage: null, source: 'sim', timestamp: null };
+
+  // Fan module inside a unit: follows its host's fan speeds.
+  const fanOf = typeof partId === 'string' && partId.match(/^(.*)-FAN-(\d+)$/);
+  if (fanOf || (typeof partId === 'string' && partId.startsWith('FAN-'))) {
+    const hostId = fanOf ? fanOf[1] : null;
+    const host = hostId && _sim.get(hostId);
+    const s = _simState(partId);
+    let rpm, maxRpm;
+    if (host && host.rpms.length) {
+      const env = MODELS[_parts.get(hostId)?.modelId]?.env || DEFAULT_ENV;
+      rpm = host.rpms[(Number(fanOf[2]) - 1) % host.rpms.length];
+      maxRpm = env.fanMax || 18000;
+      s.temp = _clamp(host.inlet ?? 24, 15, 50);
+    } else {
+      maxRpm = 18000;
+      s.temp = _clamp(s.temp + 0.08 * (32 - s.temp) + _step(1.5), 20, 55);
+      rpm = Math.round(4000 + ((s.temp - 20) / 35) * (maxRpm - 4000) + _step(200));
+    }
+    const load = Math.min(100, Math.round((rpm / maxRpm) * 100));
     let condition = 'Optimal';
-    if (rpm > MAX_RPM * 0.9) condition = 'Warning';
-    if (rpm < 2500) condition = 'Critical';
-    return { ...common, condition, age: s.age, temp: s.temp.toFixed(1), load, rpm, rpms: [rpm] };
+    if (rpm > maxRpm * 0.9) condition = 'Warning';
+    if (rpm < maxRpm * 0.12) condition = 'Critical';
+    return {
+      ...common, condition, age: s.age, temp: s.temp.toFixed(1), load, rpm, rpms: [rpm],
+      power: Math.round(3 + load * 0.12), forecast: condition === 'Critical' ? 'predicted fan fault' : 'nominal airflow',
+      anomaly: condition === 'Critical' ? 0.5 : Math.round((0.05 + load / 400) * 100) / 100
+    };
   }
 
+  const info = _parts.get(partId);
+  const model = info && MODELS[info.modelId];
+  const env = model?.env || DEFAULT_ENV;
+  const s = _simState(partId);
+
   // Mean-reverting load so demo units don't drift to the rails.
-  s.load = _clamp(s.load + 0.15 * (s.base - s.load) + _step(5), 5, 98);
-  const temp = 35 + (s.load / 100) * 45 + _step(1.5);
+  s.load = _clamp(s.load + 0.15 * (s.base - s.load) + _step(5), 3, 98);
+  const frac = s.load / 100;
+  const temp = env.tempBase + frac * env.tempSpan + (s.issue === 'hot' ? 16 : 0) + _step(1.2);
+  s.inlet = 21 + frac * 3 + _step(0.4);
+  const power = env.powerMax ? Math.round(env.powerIdle + frac * (env.powerMax - env.powerIdle) + _step(env.powerMax * 0.01)) : null;
+
+  const nFans = env.noFans ? 0 : (model?.internals?.fans ?? 0);
+  const tFrac = _clamp((temp - env.tempBase) / Math.max(1, env.tempSpan), 0, 1);
+  s.rpms = Array.from({ length: nFans }, () =>
+    Math.max(0, Math.round(env.fanMin + tFrac * (env.fanMax - env.fanMin) + _step(env.fanMax * 0.015))));
+  let fanDead = false;
+  if (s.issue === 'fan' && nFans) { s.rpms[Math.floor(s.deadFan * nFans)] = 0; fanDead = true; }
+
   let condition = 'Optimal';
-  if (temp > 80) condition = 'Warning';
+  if (temp > env.warnTemp) condition = 'Warning';
   if (s.age > 900) condition = 'Maintenance Recommended';
-  if (s.load > 90 && temp > 80) condition = 'Critical';
-  return { ...common, condition, age: s.age, temp: temp.toFixed(1), load: Math.round(s.load), rpm: null, rpms: [] };
+  if ((s.load > 90 && temp > env.warnTemp) || fanDead) condition = 'Critical';
+  const forecast = fanDead ? 'predicted fan fault'
+    : temp > env.warnTemp ? 'temp rising'
+      : s.age > 900 ? 'ageing hardware — schedule service' : 'stable';
+  const anomaly = Math.round(_clamp(0.04 + Math.max(0, temp - env.warnTemp + 8) / 40 + (fanDead ? 0.45 : 0), 0, 1) * 100) / 100;
+
+  return {
+    ...common, condition, age: s.age, temp: temp.toFixed(1), load: Math.round(s.load),
+    rpm: s.rpms.length ? s.rpms[0] : null, rpms: s.rpms, power,
+    voltage: power != null ? 12.1 : null, forecast, anomaly
+  };
 }
 
 // --- Metric history for the graph system ---------------------------------

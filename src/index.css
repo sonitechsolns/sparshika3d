@@ -250,7 +250,7 @@ body {
   border-radius: 0;
   border: none;
   border-left: 1px solid var(--border);
-  background: rgba(14, 16, 22, 0.86);
+  background: #0e1016; /* opaque: the header's status pill sits underneath */
   box-shadow: -24px 0 60px rgba(0, 0, 0, 0.5);
   animation: none;
   display: flex;
@@ -517,3 +517,6 @@ body {
   .cloud-pill__sub { display: none; }
 }
 .header-right .toggle-btn { margin-left: 0; }
+
+.panel-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.panel-sub { font-size: 0.75rem; color: var(--text-muted); overflow-wrap: anywhere; }

@@ -12,3 +12,8 @@ export const FRONT_FACE = FRONT_Z + 0.03; // front mounting plane
 
 // y-centre of a unit spanning [startU, startU+heightU)
 export const uY = (startU, heightU) => PLINTH + (startU - 1 + heightU / 2) * U;
+
+// Bundled font for 3D text. Without an explicit font, troika-three-text fetches
+// font data from cdn.jsdelivr.net at runtime — on a firewalled network that
+// request fails and the suspended <Text> blanks the ENTIRE scene.
+export const TEXT_FONT = `${import.meta.env.BASE_URL}fonts/Inter-SemiBold.woff`;
