@@ -520,3 +520,66 @@ body {
 
 .panel-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .panel-sub { font-size: 0.75rem; color: var(--text-muted); overflow-wrap: anywhere; }
+
+/* ---- View presets + cable legend (bottom-left dock) ---- */
+.view-dock {
+  position: absolute;
+  left: 1.25rem;
+  bottom: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 5;
+}
+.view-dock__group { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.view-dock__label {
+  width: 52px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  font: 600 0.78rem/1 inherit;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, opacity 0.15s;
+}
+.chip:hover { color: var(--text-main); border-color: rgba(255, 255, 255, 0.28); }
+.chip--on { color: var(--text-main); border-color: rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.08); }
+.chip--cable:not(.chip--on) { opacity: 0.55; }
+.chip--cable:not(.chip--on) .cable-swatch { background: #3a4048 !important; box-shadow: none; }
+.cable-swatch { display: inline-block; width: 18px; border-radius: 3px; }
+.cable-swatch--power { height: 6px; background: #16171a; box-shadow: 0 0 0 1px #5b626b; }
+.cable-swatch--copper { height: 4px; background: #2f6fd6; }
+.cable-swatch--fiber { height: 2px; background: #f2c81a; }
+
+/* Connections section in the telemetry panel */
+.conn { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+.conn__title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
+.conn__to { text-align: right; max-width: 62%; }
+.conn-dot { display: inline-block; width: 12px; margin-right: 7px; vertical-align: middle; border-radius: 2px; }
+.conn-dot--power { height: 5px; background: #16171a; box-shadow: 0 0 0 1px #5b626b; }
+.conn-dot--copper { height: 3px; background: #2f6fd6; }
+.conn-dot--fiber { height: 2px; background: #f2c81a; }
+
+@media (max-width: 900px) {
+  .view-dock { left: 0.75rem; right: 0.75rem; bottom: 0.75rem; }
+  .view-dock--split { display: none; }
+  .instructions-overlay { display: none; }
+}

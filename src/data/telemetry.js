@@ -281,6 +281,20 @@ export function getPartInfo(partId) {
   return _parts.get(partId);
 }
 
+// Physical cabling computed by the scene (src/scene/cabling.js):
+// partId -> { power: [...], network: [...], uplinks: [...], trunk: [...] }
+let _connections = new Map();
+
+/** Replace the connection map (the scene calls this when the room changes). */
+export function registerConnections(map) {
+  _connections = map;
+}
+
+/** What a part is cabled to, or undefined. */
+export function getConnections(partId) {
+  return _connections.get(partId);
+}
+
 /** Stable 0..1 hash of a string (FNV-1a), so demo behaviour is repeatable. */
 function hash01(str, salt = 0) {
   let h = 2166136261 ^ salt;

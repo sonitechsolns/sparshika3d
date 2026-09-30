@@ -55,7 +55,6 @@ export function buildRoom(racks) {
     push('rackFrame', R(trs(0, RACK_H - TOP / 2, 0, RW, TOP, RD)), -1);
     push('rackFrame', R(trs(-RW / 2 + 0.005, RACK_H / 2, 0, 0.01, RACK_H, RD)), -1);
     push('rackFrame', R(trs(RW / 2 - 0.005, RACK_H / 2, 0, 0.01, RACK_H, RD)), -1);
-    push('rackFrame', R(trs(0, RACK_H / 2, RD / 2 - 0.005, RW, RACK_H, 0.01)), -1);
     for (const s of [-1, 1]) {
       push('rackRail', R(trs(s * (RW / 2 - 0.04), PLINTH + (N_U * U) / 2, FRONT_FACE, 0.02, N_U * U, 0.02)), -1);
     }

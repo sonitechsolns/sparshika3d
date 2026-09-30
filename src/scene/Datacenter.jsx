@@ -4,6 +4,8 @@ import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import RoomRacks from './RoomRacks';
 import DetailedUnit from './DetailedUnit';
+import Cabling from './Cabling';
+import { VIEWS } from './views';
 import { buildRoom } from './roomModel';
 import { N_U } from './rackGeometry';
 import { RACK_LAYOUT, CRACS, ROW_Z, RACK_PITCH, RACKS_PER_ROW } from '../data/layout';
@@ -16,8 +18,8 @@ const ROOM = { L: 10, W: 6, H: 3 };
 const TILE = 0.6;                 // 600mm raised-floor tiles
 const HALF = { L: ROOM.L / 2, W: ROOM.W / 2 };
 
-// --- Raised floor: 600mm tiles + teal-glowing perforated vent tiles in the
-//     cold aisles. Instanced for performance.
+// --- Raised floor: 600mm tiles + perforated (unlit) vent tiles in the cold
+//     aisles. Instanced for performance.
 function Floor() {
   const { normal, vents } = useMemo(() => {
     const nx = Math.round(ROOM.L / TILE);
@@ -43,10 +45,11 @@ function Floor() {
         <planeGeometry args={[ROOM.L, ROOM.W]} />
         <meshStandardMaterial color="#080b10" roughness={0.95} />
       </mesh>
+      <VentHoles vents={vents} />
 
       <Instances limit={normal.length} castShadow receiveShadow>
         <boxGeometry args={[TILE - 0.02, 0.05, TILE - 0.02]} />
-        <meshStandardMaterial color="#9aa0aa" metalness={0.35} roughness={0.55} />
+        <meshStandardMaterial color="#838a94" metalness={0.35} roughness={0.6} />
         {normal.map((p, i) => (
           <Instance key={i} position={p} />
         ))}
@@ -54,18 +57,34 @@ function Floor() {
 
       <Instances limit={Math.max(1, vents.length)}>
         <boxGeometry args={[TILE - 0.02, 0.05, TILE - 0.02]} />
-        <meshStandardMaterial
-          color="#0e2b2b"
-          emissive="#35e0c6"
-          emissiveIntensity={0.9}
-          metalness={0.2}
-          roughness={0.5}
-        />
+        <meshStandardMaterial color="#6a717a" metalness={0.45} roughness={0.7} />
         {vents.map((p, i) => (
           <Instance key={i} position={p} />
         ))}
       </Instances>
     </group>
+  );
+}
+
+// Perforation dots on each vent tile (one instanced batch), so vents read as
+// perforated steel rather than as lit panels.
+function VentHoles({ vents }) {
+  const holes = useMemo(() => {
+    const out = [];
+    const n = 7, step = (TILE - 0.1) / (n - 1);
+    for (const [x, , z] of vents) {
+      for (let i = 0; i < n; i++) for (let k = 0; k < n; k++) {
+        out.push([x - (TILE - 0.1) / 2 + i * step, 0.0255, z - (TILE - 0.1) / 2 + k * step]);
+      }
+    }
+    return out;
+  }, [vents]);
+  return (
+    <Instances limit={Math.max(1, holes.length)}>
+      <planeGeometry args={[0.03, 0.03]} />
+      <meshStandardMaterial color="#1c2026" roughness={0.9} />
+      {holes.map((p, i) => <Instance key={i} position={p} rotation={[-Math.PI / 2, 0, 0]} />)}
+    </Instances>
   );
 }
 
@@ -123,35 +142,12 @@ function CeilingLights() {
     <group>
       {zs.map((z, i) => (
         <group key={i}>
-          <mesh position={[0, ROOM.H - 0.06, z]}>
-            <boxGeometry args={[ROOM.L * 0.88, 0.06, 0.2]} />
+          {/* downward-facing only, so an overhead view looks through it */}
+          <mesh position={[0, ROOM.H - 0.03, z]} rotation={[Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[ROOM.L * 0.88, 0.2]} />
             <meshStandardMaterial color="#eef4ff" emissive="#e4edff" emissiveIntensity={2.6} />
           </mesh>
-          <pointLight position={[0, ROOM.H - 0.25, z]} intensity={9} distance={11} decay={1.6} color="#d8e4ff" />
-        </group>
-      ))}
-    </group>
-  );
-}
-
-// --- Two black metal cable trays running lengthwise above each rack row.
-function CableTrays() {
-  return (
-    <group>
-      {[-ROW_Z, ROW_Z].map((z, i) => (
-        <group key={i} position={[0, ROOM.H - 0.4, z]}>
-          <mesh>
-            <boxGeometry args={[ROOM.L * 0.9, 0.04, 0.34]} />
-            <meshStandardMaterial color="#0d0f13" metalness={0.5} roughness={0.6} />
-          </mesh>
-          <mesh position={[0, 0.05, 0.16]}>
-            <boxGeometry args={[ROOM.L * 0.9, 0.1, 0.02]} />
-            <meshStandardMaterial color="#0d0f13" metalness={0.5} roughness={0.6} />
-          </mesh>
-          <mesh position={[0, 0.05, -0.16]}>
-            <boxGeometry args={[ROOM.L * 0.9, 0.1, 0.02]} />
-            <meshStandardMaterial color="#0d0f13" metalness={0.5} roughness={0.6} />
-          </mesh>
+          <pointLight position={[0, ROOM.H - 0.25, z]} intensity={12} distance={13} decay={1.4} color="#e6eeff" />
         </group>
       ))}
     </group>
@@ -402,7 +398,7 @@ function SceneDimmer({ pulled }) {
 // Smoothly fly the camera to frame a pulled-out unit from the front, so the
 // pop-out is always visible regardless of which way its rack faces. Restores
 // the operator's overview when focus clears.
-function CameraFocus({ focus }) {
+function CameraFocus({ focus, view }) {
   const { camera, controls } = useThree();
   const goalPos = useRef(new THREE.Vector3());
   const goalTarget = useRef(new THREE.Vector3());
@@ -434,13 +430,31 @@ function CameraFocus({ focus }) {
     return undefined;
   }, [focus, camera, controls]);
 
+  // View presets (declared after the focus effect so a preset chosen while a
+  // unit is open wins over "return to where you were").
+  useEffect(() => {
+    if (!view || !VIEWS[view.name]) return;
+    goalPos.current.set(...VIEWS[view.name].pos);
+    goalTarget.current.set(...VIEWS[view.name].target);
+    home.current = null;
+    active.current = true;
+  }, [view]);
+
+  // Grabbing the controls cancels any fly-to, so the camera never fights you.
+  useEffect(() => {
+    if (!controls) return undefined;
+    const stop = () => { active.current = false; };
+    controls.addEventListener('start', stop);
+    return () => controls.removeEventListener('start', stop);
+  }, [controls]);
+
   useFrame((_, delta) => {
     if (!active.current || !controls) return;
     const a = 1 - Math.exp(-6 * delta); // frame-rate-independent ease
     camera.position.lerp(goalPos.current, a);
     controls.target.lerp(goalTarget.current, a);
     controls.update();
-    if (camera.position.distanceTo(goalPos.current) < 0.015) active.current = false;
+    if (camera.position.distanceTo(goalPos.current) < 0.01 && controls.target.distanceTo(goalTarget.current) < 0.01) active.current = false;
   });
   return null;
 }
@@ -470,11 +484,11 @@ function DeepLink({ want, room, onSelectUnit, onSelectComponent }) {
 }
 
 /**
- * The datacenter hall: shell, raised floor, lighting, cable trays, 22 racks of
+ * The datacenter hall: shell, raised floor, lighting, segregated cabling, 22 racks of
  * real hardware (instanced), perimeter cooling, the pulled-out unit in full
  * detail, heat map, camera focus and hover cards.
  */
-export default function Datacenter({ selected, setSelected, showHeatmap = false, initialPart = null }) {
+export default function Datacenter({ selected, setSelected, showHeatmap = false, initialPart = null, cables = {}, view = null }) {
   const [hover, setHover] = useState(null);       // { partId, metadata, pos, inside }
   const live = useLiveTopology();
   const racks = useMemo(() => buildRacks(live), [live]);
@@ -516,16 +530,18 @@ export default function Datacenter({ selected, setSelected, showHeatmap = false,
 
   return (
     <group>
-      <ambientLight intensity={0.55} color="#b6c6d6" />
-      <hemisphereLight args={['#48596a', '#0a0d12', 0.75]} />
-      {/* cold-aisle wash so every rack face reads clearly */}
-      <directionalLight position={[0, 5, -6]} intensity={0.9} color="#e2ecff" />
-      <directionalLight position={[0, 5, 6]} intensity={0.9} color="#e2ecff" />
+      <ambientLight intensity={0.95} color="#c8d4e2" />
+      <hemisphereLight args={['#9fb0c4', '#1a1f27', 1.25]} />
+      {/* cold-aisle wash so every rack face reads clearly, plus a hot-aisle
+          fill so the rear cabling is legible */}
+      <directionalLight position={[0, 5, -6]} intensity={1.5} color="#eef3ff" />
+      <directionalLight position={[0, 5, 6]} intensity={1.5} color="#eef3ff" />
+      <directionalLight position={[-6, 4, 0]} intensity={0.8} color="#f4f6fb" />
 
       <Floor />
       <Shell />
       <CeilingLights />
-      <CableTrays />
+      <Cabling room={room} racks={racks} show={cables} />
       <RoomRacks
         room={room}
         racks={racks}
@@ -552,7 +568,7 @@ export default function Datacenter({ selected, setSelected, showHeatmap = false,
       ))}
       <DeepLink want={initialPart} room={room} onSelectUnit={onSelectUnit} onSelectComponent={onSelectComponent} />
       <SceneDimmer pulled={pulled} />
-      <CameraFocus focus={selected} />
+      <CameraFocus focus={selected} view={view} />
       {showHeatmap && <HeatGradient room={room} />}
 
       {/* Click-away backdrop: any empty click resets the focus. */}

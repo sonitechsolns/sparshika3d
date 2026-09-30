@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getTelemetry, getMetricHistory, watchMetric, severity, getMetadata, getPartInfo } from '../data/telemetry';
+import { getTelemetry, getMetricHistory, watchMetric, severity, getMetadata, getPartInfo, getConnections } from '../data/telemetry';
 import Sparkline from './Sparkline';
 import { ago } from '../utils/format';
 
@@ -123,12 +123,40 @@ export default function TelemetryPanel({ partId, onClose, large = false, side = 
             </span>
           </div>
         )}
+        <Connections partId={host ? host[1] : partId} />
         {cur.source === 'sim' && (
           <p className="panel-note">
             No on-prem agent reports this part, so these values are simulated in the browser.
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+const CONN_ROWS = [
+  ['power', 'Power', 'conn-dot--power'],
+  ['network', 'Data (copper)', 'conn-dot--copper'],
+  ['uplinks', 'Fibre uplinks', 'conn-dot--fiber'],
+];
+
+/** What this unit is physically plugged into, from the twin's cabling model. */
+function Connections({ partId }) {
+  const c = getConnections(partId);
+  if (!c) return null;
+  const rows = CONN_ROWS.filter(([k]) => c[k]?.length);
+  if (!rows.length) return null;
+  return (
+    <div className="conn">
+      <div className="conn__title">Connections</div>
+      {rows.map(([k, label, cls]) => (
+        <div className="data-row" key={k}>
+          <span><span className={`conn-dot ${cls}`} />{label}</span>
+          <span className="conn__to" title={c[k].join(', ')}>
+            {c[k].length > 4 ? `${c[k].slice(0, 3).join(', ')} +${c[k].length - 3} more` : c[k].join(', ')}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

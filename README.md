@@ -77,12 +77,29 @@ No frontend change is needed.**
   and their ring shows their condition.
 - A rack id the room doesn't have is logged to the console and not drawn.
 
+## Cabling
+
+`src/scene/cabling.js` derives every cable from the room layout, so each one
+has a real origin and destination. Classes are segregated the way a hall is
+built, and each can be toggled from the **Cables** dock:
+
+| Class | Looks like | Route |
+|---|---|---|
+| Power | thick black cords | UPS rack → overhead busway A (red) / B (blue) → tap-off → vertical PDU-A / PDU-B on the rear corners → one cord per PSU (A/B alternate) |
+| Copper | blue Cat6A | server NICs → rear vertical manager → both top-of-rack switches; patch-panel trunks → wire-basket tray → network rack |
+| Fibre | thin yellow | each TOR → front riser → yellow raceway (highest tier) → crossover → two spine switches |
+
+The telemetry panel lists what the selected unit is plugged into. The
+**View** dock flies to Overview, Cold aisle, Hot aisle (rear cabling) or
+Overhead (containment); dragging cancels a fly-to.
+
 ## Layout
 
 | Path | What |
 |---|---|
 | `src/data/telemetry.js` | Poller, `getTelemetry()` / `getMetadata()`, live topology hook, metric history |
-| `src/scene/Datacenter.jsx` | Room, racks layout, live-part merge, camera focus, heat map |
+| `src/scene/Datacenter.jsx` | Room, racks layout, live-part merge, camera focus and view presets, heat map |
+| `src/scene/cabling.js`, `Cabling.jsx` | Cable routing + connection map, merged-tube renderer |
 | `src/scene/Rack.jsx` | Rack cabinet, units, instanced status LEDs, server internals and fans |
 | `src/components/` | Telemetry panel, cloud status pill, sparkline |
 | `src/legacy/` | GLB-based viewers, not mounted (see its README) |

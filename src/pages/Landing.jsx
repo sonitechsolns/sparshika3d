@@ -55,7 +55,7 @@ export default function Landing() {
             </div>
           </div>
           <figure className="hero__shot">
-            <img src={asset('hero-hall.jpg')} alt="The Sparshika 3D twin: rows of server racks in a cold aisle, with status lights on every unit" />
+            <img src={asset('hero-hall.jpg')} alt="The Sparshika 3D twin: a cold aisle of server racks with status lights on every unit and overhead power, copper and fibre runs" />
             <figcaption className="hero__chip">
               <span className="dot dot--ok" />
               <span>Demo hall: <b>22</b> racks, a status light on every unit</span>

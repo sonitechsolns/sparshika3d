@@ -3,10 +3,17 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { Link, useSearchParams } from 'react-router-dom';
 import Datacenter from '../scene/Datacenter';
+import { VIEWS } from '../scene/views';
 import TelemetryPanel from '../components/TelemetryPanel';
 import CloudStatus from '../components/CloudStatus';
 import { startLiveTelemetry } from '../data/telemetry';
 import { Hexagon } from 'lucide-react';
+
+const CABLE_KEYS = [
+  ['power', 'Power'],
+  ['copper', 'Copper'],
+  ['fiber', 'Fibre'],
+];
 
 /**
  * The 3D twin. `siteId` streams that site's live telemetry; null runs the
@@ -48,6 +55,11 @@ export default function TwinView({ siteId = null, title = 'Sparshika 3D', badge 
 
   // Optional hot-aisle heat-map overlay (off by default).
   const [heatmap, setHeatmap] = useState(false);
+  // Cable classes shown in the hall, and the last camera preset asked for
+  // (the nonce lets the same preset be chosen twice in a row).
+  const [cables, setCables] = useState({ power: true, copper: true, fiber: true });
+  const [view, setView] = useState(null);
+  const goTo = (name) => { setSelected(null); setView({ name, n: Date.now() }); };
 
   return (
     <div className="app-container">
@@ -73,20 +85,26 @@ export default function TwinView({ siteId = null, title = 'Sparshika 3D', badge 
       </header>
 
       <main className={`canvas-container${open ? ' canvas-container--split' : ''}`}>
-        <Canvas camera={{ position: [-4.5, 2.3, 3.9], fov: 50 }}>
+        <Canvas camera={{ position: VIEWS.overview.pos, fov: 50 }} dpr={[1, 1.75]}>
           <color attach="background" args={['#05070a']} />
           <Suspense fallback={null}>
             <Datacenter selected={selected} setSelected={setSelected} showHeatmap={heatmap}
-              initialPart={initialPart} />
+              initialPart={initialPart} cables={cables} view={view} />
           </Suspense>
 
           <OrbitControls
             makeDefault
-            target={[0.9, 1.0, 1.0]}
+            target={VIEWS.overview.target}
             enableDamping
-            dampingFactor={0.05}
-            minDistance={1}
-            maxDistance={22}
+            dampingFactor={0.08}
+            rotateSpeed={0.55}
+            zoomSpeed={0.8}
+            panSpeed={0.8}
+            zoomToCursor
+            screenSpacePanning
+            minDistance={0.6}
+            maxDistance={16}
+            maxPolarAngle={Math.PI * 0.49}
           />
         </Canvas>
       </main>
@@ -98,6 +116,24 @@ export default function TwinView({ siteId = null, title = 'Sparshika 3D', badge 
           <TelemetryPanel partId={shownId} side onClose={() => setSelected(null)} />
         )}
       </aside>
+
+      <div className={`view-dock${open ? ' view-dock--split' : ''}`}>
+        <div className="view-dock__group" role="group" aria-label="Camera views">
+          <span className="view-dock__label">View</span>
+          {Object.entries(VIEWS).map(([k, v]) => (
+            <button key={k} type="button" className={`chip${view?.name === k ? ' chip--on' : ''}`} onClick={() => goTo(k)}>{v.label}</button>
+          ))}
+        </div>
+        <div className="view-dock__group" role="group" aria-label="Cables">
+          <span className="view-dock__label">Cables</span>
+          {CABLE_KEYS.map(([k, label]) => (
+            <button key={k} type="button" aria-pressed={cables[k]} className={`chip chip--cable${cables[k] ? ' chip--on' : ''}`}
+              onClick={() => setCables((c) => ({ ...c, [k]: !c[k] }))}>
+              <span className={`cable-swatch cable-swatch--${k}`} aria-hidden="true" />{label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className={`instructions-overlay${open ? ' instructions-overlay--split' : ''}`}>
         <p><strong>Hover</strong> over a part to see metadata.</p>
