@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { Instances, Instance, Html } from '@react-three/drei';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -10,7 +10,7 @@ import { buildRoom } from './roomModel';
 import { N_U } from './rackGeometry';
 import { RACK_LAYOUT, CRACS, ROW_Z, RACK_PITCH, RACKS_PER_ROW } from '../data/layout';
 import { modelForKind } from '../data/catalog';
-import { getMetadata, getTelemetry, registerParts, severity, useLiveTopology } from '../data/telemetry';
+import { componentOf, getMetadata, getTelemetry, registerParts, severity, useLiveTopology } from '../data/telemetry';
 import { HoverCard } from '../components/TelemetryPanel';
 
 // Room is 10m (X, length) x 6m (Z, width) x 3m (Y, height), centred on origin.
@@ -160,6 +160,7 @@ function CeilingLights() {
 // v1.1) and are merged in here, displacing any demo unit in the same slots — so
 // what the agent reports is what the twin shows.
 const _warned = new Set();
+const unitPos = (u) => [u.anchor.pos.x, u.anchor.pos.y + 0.28, u.anchor.pos.z];
 
 function buildRacks(live) {
   const units = live.filter((p) => p.kind !== 'fan');
@@ -206,10 +207,20 @@ function CracUnit({ crac, onSelectObject, onHover, onUnhover }) {
   const fans = useRef([]);
   const led = useRef();
   const rpm = useRef(1200);
+  const rpms = useRef([]);                         // per-fan speed (0 = stopped)
+  const rings = useRef([]);
   useEffect(() => {
     const read = () => {
       const t = getTelemetry(crac.partId);
       rpm.current = Number(t.rpm) || 0;
+      rpms.current = Array.isArray(t.rpms) ? t.rpms.map(Number) : [];
+      rings.current.forEach((m, i) => {
+        if (!m) return;
+        const dead = rpms.current[i] === 0;
+        m.color.set(dead ? '#ff2b2b' : '#2bff6a');
+        m.emissive.set(dead ? '#ff2b2b' : '#2bff6a');
+        m.emissiveIntensity = dead ? 2.4 : 0.6;
+      });
       const sev = severity(t.condition, t.source);
       const col = { critical: '#ff2b2b', warning: '#ffb020', offline: '#4a5568', optimal: '#2bff6a' }[sev];
       if (led.current) { led.current.color.set(col); led.current.emissive.set(col); }
@@ -218,13 +229,17 @@ function CracUnit({ crac, onSelectObject, onHover, onUnhover }) {
     const id = setInterval(read, 1500);
     return () => clearInterval(id);
   }, [crac.partId]);
-  useFrame((_, dt) => fans.current.forEach((f) => { if (f) f.rotation.y += (rpm.current / 600) * dt * Math.PI * 2; }));
+  useFrame((_, dt) => fans.current.forEach((f, i) => {
+    if (!f) return;
+    const r = rpms.current[i] ?? rpm.current;
+    f.rotation.y += (r / 600) * dt * Math.PI * 2;
+  }));
 
   const W = 0.9, H = 1.95, D = 0.85;
   const handlers = {
     onPointerOver: (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; onHover(crac.partId, e.eventObject); },
     onPointerOut: (e) => { e.stopPropagation(); document.body.style.cursor = 'auto'; onUnhover(); },
-    onClick: (e) => { e.stopPropagation(); onSelectObject(crac.partId, e.eventObject); },
+    onClick: (e) => { e.stopPropagation(); if (e.delta > 6) return; onSelectObject(crac.partId, e.eventObject); },
   };
   return (
     <group position={crac.pos} rotation={[0, crac.rot, 0]}>
@@ -254,13 +269,20 @@ function CracUnit({ crac, onSelectObject, onHover, onUnhover }) {
           <meshStandardMaterial color="#0b0d10" transparent opacity={0.55} />
         </mesh>
         {[-0.28, 0, 0.28].map((x, i) => (
-          <group key={x} position={[x, H / 2 - 0.03, 0]} ref={(el) => { fans.current[i] = el; }}>
-            {Array.from({ length: 5 }).map((_, k) => (
-              <mesh key={k} rotation={[0, (k * Math.PI * 2) / 5, 0.3]}>
-                <boxGeometry args={[0.24, 0.008, 0.05]} />
-                <meshStandardMaterial color="#4a5260" metalness={0.4} roughness={0.5} />
-              </mesh>
-            ))}
+          <group key={x}>
+            <group position={[x, H / 2 - 0.03, 0]} ref={(el) => { fans.current[i] = el; }}>
+              {Array.from({ length: 5 }).map((_, k) => (
+                <mesh key={k} rotation={[0, (k * Math.PI * 2) / 5, 0.3]}>
+                  <boxGeometry args={[0.24, 0.008, 0.05]} />
+                  <meshStandardMaterial color="#4a5260" metalness={0.4} roughness={0.5} />
+                </mesh>
+              ))}
+            </group>
+            {/* status ring on the grille: green running, red stopped */}
+            <mesh position={[x, H / 2 + 0.008, 0]} rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.125, 0.008, 6, 28]} />
+              <meshStandardMaterial ref={(el) => { rings.current[i] = el; }} color="#2bff6a" emissive="#2bff6a" emissiveIntensity={0.6} toneMapped={false} />
+            </mesh>
           </group>
         ))}
       </group>
@@ -417,9 +439,9 @@ function CameraFocus({ focus, view }) {
       // position. Stand off in front and well above it so the view looks DOWN
       // into the open chassis (fans, heatsinks) instead of at the raised lid.
       goalPos.current.copy(look)
-        .add(dir.clone().multiplyScalar(1.45))
-        .add(new THREE.Vector3(0, 0.95, 0));
-      goalTarget.current.copy(look).add(dir.clone().multiplyScalar(0.62));
+        .add(dir.clone().multiplyScalar(focus.dist ?? 1.45))
+        .add(new THREE.Vector3(0, focus.lift ?? 0.95, 0));
+      goalTarget.current.copy(look).add(dir.clone().multiplyScalar(focus.aim ?? 0.62));
       active.current = true;
     } else if (home.current) {
       goalPos.current.copy(home.current.pos);
@@ -460,26 +482,33 @@ function CameraFocus({ focus, view }) {
 }
 
 /**
- * Deep links: `?part=R760-A17` opens the twin with that part pulled out (and
- * `?part=FAN-R760-03` opens its host server with the fan selected), so an alert
- * or a chat message can link straight to a part. Runs once, as soon as the part
- * exists in the scene (live parts appear after the first poll).
+ * Fly-to requests: `req = { partId, n }` from a deep link (?part=…), the alerts
+ * list, a notification or the walk-mode markers. A whole unit is pulled out; a
+ * component (fan / power supply) opens its host unit with that component
+ * selected and highlighted. Only the latest request matters — rapid clicks
+ * just retarget — and a request for a part that isn't in the room yet (live
+ * parts arrive after the first poll) waits for the room to update.
  */
-function DeepLink({ want, room, onSelectUnit, onSelectComponent }) {
-  const done = useRef(false);
+function FocusRequests({ req, room, onSelectUnit, onSelectComponent, onSelectCrac }) {
+  const handled = useRef(null);
   useEffect(() => {
-    if (done.current) return;
-    if (!want) { done.current = true; return; }
-    let host = want;
+    if (!req || handled.current === req.n) return;
+    const want = req.partId;
+    const comp = componentOf(want);
+    let host = comp?.hostId || want;
     for (const u of room.units) if (u.fans?.includes(want)) host = u.partId;
-    const fan = want.match(/^(.*)-FAN-\d+$/);
-    if (fan && room.byPart.has(fan[1])) host = fan[1];
+    const crac = CRACS.find((c) => c.partId === host);
+    if (crac) {                            // perimeter cooling: frame the unit, no pull-out
+      handled.current = req.n;
+      onSelectCrac(crac, want);
+      return;
+    }
     const idx = room.byPart.get(host);
-    if (idx == null) return; // not in the room yet — retry when it updates
-    done.current = true;
+    if (idx == null) return;               // not in the room yet — retry when it updates
+    handled.current = req.n;
     onSelectUnit(room.units[idx]);
-    if (host !== want) setTimeout(() => onSelectComponent(want, host), 0);
-  }, [want, room, onSelectUnit, onSelectComponent]);
+    if (host !== want) onSelectComponent(want, host);
+  }, [req, room, onSelectUnit, onSelectComponent, onSelectCrac]);
   return null;
 }
 
@@ -488,7 +517,7 @@ function DeepLink({ want, room, onSelectUnit, onSelectComponent }) {
  * real hardware (instanced), perimeter cooling, the pulled-out unit in full
  * detail, heat map, camera focus and hover cards.
  */
-export default function Datacenter({ selected, setSelected, showHeatmap = false, initialPart = null, cables = {}, view = null }) {
+export default function Datacenter({ selected, setSelected, showHeatmap = false, focusReq = null, cables = {}, view = null, walk = false, children }) {
   const [hover, setHover] = useState(null);       // { partId, metadata, pos, inside }
   const live = useLiveTopology();
   const racks = useMemo(() => buildRacks(live), [live]);
@@ -502,15 +531,23 @@ export default function Datacenter({ selected, setSelected, showHeatmap = false,
     const f = new THREE.Vector3(0, 0, -1).applyQuaternion(_q).normalize();
     return { pos: [_v.x, _v.y + 0.28, _v.z], front: [f.x, f.y, f.z] };
   };
-  const unitPos = (u) => [u.anchor.pos.x, u.anchor.pos.y + 0.28, u.anchor.pos.z];
 
-  const onSelectUnit = (u) =>
-    setSelected({ partId: u.partId, pos: unitPos(u), front: u.anchor.front.toArray() });
+  const onSelectUnit = useCallback((u) =>
+    setSelected({ partId: u.partId, pos: unitPos(u), front: u.anchor.front.toArray() }), [setSelected]);
   const onSelectObject = (partId, obj) => setSelected({ partId, ...anchorOf(obj) });
+  const onSelectCrac = useCallback((crac, partId) => {
+    // The CRACs stand at the ends of the rack rows, so frame them diagonally
+    // from the outer cold aisle rather than through the racks.
+    const front = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), crac.rot);
+    const side = Math.sign(crac.pos[2]) || 1;
+    const dir = new THREE.Vector3(front.x * 0.6, 0, side * 0.8).normalize();
+    setSelected({ partId, ...(partId !== crac.partId ? { hostId: crac.partId } : {}),
+      pos: [crac.pos[0], 1.95, crac.pos[2]], front: [dir.x, 0, dir.z], dist: 1.5, lift: 1.1, aim: 0 });
+  }, [setSelected]);
   // A component inside the pulled-out unit (a fan): keep the host open and the
   // camera where it is, just switch the panel to the component.
-  const onSelectComponent = (partId, hostId) =>
-    setSelected((prev) => (prev ? { ...prev, partId, hostId } : prev));
+  const onSelectComponent = useCallback((partId, hostId) =>
+    setSelected((prev) => (prev ? { ...prev, partId, hostId } : prev)), [setSelected]);
   const onHoverUnit = (u) => setHover({ partId: u.partId, metadata: getMetadata(u.partId), pos: unitPos(u), inside: false });
   const onHover = (partId, obj, inside = false) =>
     setHover({ partId, metadata: getMetadata(partId), pos: anchorOf(obj).pos, inside });
@@ -556,6 +593,7 @@ export default function Datacenter({ selected, setSelected, showHeatmap = false,
           unit={shownUnit}
           open={pulled === shownUnit.partId}
           liveFans={shownUnit.fans}
+          focusComponent={selected?.hostId === shownUnit.partId ? selected.partId : null}
           onClosed={() => setShown(null)}
           onSelectUnit={onSelectUnit}
           onSelectComponent={onSelectComponent}
@@ -566,13 +604,14 @@ export default function Datacenter({ selected, setSelected, showHeatmap = false,
       {CRACS.map((c) => (
         <CracUnit key={c.partId} crac={c} onSelectObject={onSelectObject} onHover={onHover} onUnhover={onUnhover} />
       ))}
-      <DeepLink want={initialPart} room={room} onSelectUnit={onSelectUnit} onSelectComponent={onSelectComponent} />
-      <SceneDimmer pulled={pulled} />
-      <CameraFocus focus={selected} view={view} />
+      <FocusRequests req={focusReq} room={room} onSelectUnit={onSelectUnit} onSelectComponent={onSelectComponent} onSelectCrac={onSelectCrac} />
+      <SceneDimmer pulled={walk ? undefined : pulled} />
+      {!walk && <CameraFocus focus={selected} view={view} />}
+      {children?.(room)}
       {showHeatmap && <HeatGradient room={room} />}
 
       {/* Click-away backdrop: any empty click resets the focus. */}
-      <mesh scale={40} onClick={() => setSelected(null)}>
+      <mesh scale={40} onClick={(e) => { if (e.delta <= 6) setSelected(null); }}>
         <sphereGeometry args={[1, 8, 8]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.BackSide} />
       </mesh>

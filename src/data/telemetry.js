@@ -80,6 +80,8 @@ export function startLiveTelemetry(siteId) {
   _cache.clear();
   _lastTs.clear();
   _history.clear();
+  _sim.clear();
+  _t0 = Date.now();
   _status = _site ? { state: 'connecting', lastOk: null, error: null } : { state: 'demo', lastOk: null, error: null };
   _emit();
   if (_site && typeof window !== 'undefined') {
@@ -253,12 +255,13 @@ export function getMetadata(partId) {
       serialNumber: serialFor(partId)
     };
   }
-  // A fan module inside a demo unit: "<host>-FAN-<n>".
-  const fan = typeof partId === 'string' && partId.match(/^(.*)-FAN-(\d+)$/);
-  if (fan) {
-    const host = getMetadata(fan[1]);
-    return { brand: host.brand, model: `Hot-swap fan module ${fan[2]} (${host.model})`, logo: host.logo,
-      partNumber: 'FAN-MODULE', serialNumber: serialFor(partId) };
+  // A fan or power-supply module inside a unit: "<host>-FAN-<n>" / "<host>-PSU-<n>".
+  const comp = componentOf(partId);
+  if (comp && comp.hostId) {
+    const host = getMetadata(comp.hostId);
+    const what = comp.kind === 'psu' ? 'Hot-swap power supply' : 'Hot-swap fan module';
+    return { brand: host.brand, model: `${what} ${comp.index} (${host.model})`, logo: host.logo,
+      partNumber: comp.kind === 'psu' ? 'PSU-MODULE' : 'FAN-MODULE', serialNumber: serialFor(partId) };
   }
   return {
     ...UNKNOWN_IDENTITY,
@@ -279,6 +282,27 @@ export function registerParts(list) {
 /** Where a part is: { modelId, rackId, startU, heightU } or undefined. */
 export function getPartInfo(partId) {
   return _parts.get(partId);
+}
+
+/** Every registered part id (units the scene draws, plus live components). */
+export function listParts() {
+  return [..._parts.keys()];
+}
+
+/**
+ * A component inside a unit (fan or power supply), or null for a whole unit.
+ * Demo components are named "<host>-FAN-<n>" / "<host>-PSU-<n>"; live fans
+ * reported by the agent (e.g. FAN-R760-03) are registered with their host.
+ * @returns {{ hostId: string|null, kind: 'fan'|'psu', index: number } | null}
+ */
+export function componentOf(partId) {
+  const id = String(partId);
+  const reg = _parts.get(id);
+  if (reg?.hostId) return { hostId: reg.hostId, kind: reg.kind || 'fan', index: reg.index || 1 };
+  const m = id.match(/^(.*)-(FAN|PSU)-(\d+)$/);
+  if (m) return { hostId: m[1], kind: m[2] === 'PSU' ? 'psu' : 'fan', index: Number(m[3]) };
+  if (id.startsWith('FAN-')) return { hostId: null, kind: 'fan', index: Number(id.match(/(\d+)$/)?.[1]) || 1 };
+  return null;
 }
 
 // Physical cabling computed by the scene (src/scene/cabling.js):
@@ -362,9 +386,17 @@ const _clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 const DEFAULT_ENV = { tempBase: 25, tempSpan: 45, powerIdle: 150, powerMax: 800, fanMin: 3000, fanMax: 13000, warnTemp: 80 };
 
-// Demo units get a stable "personality" from their id: most are healthy, a few
-// run hot, a few have a failed fan, and some are old enough to need service —
-// so the room looks like a real fleet (a handful of alerts, not a sea of them).
+// Demo units get a stable "personality" from their id: most are healthy; a few
+// have a failed fan or power supply, run hot, have a fan wearing out or a
+// drive logging SMART errors; some are old enough to need service — so the
+// room looks like a real fleet (a handful of alerts, not a sea of them).
+//
+// One unit also plays out a failure live, so the notifications can be seen
+// working: healthy at first, then a fan starts wearing (predicted failure),
+// then it stops (failed). Timeline counted from when the demo starts.
+export const DEMO_EVENT = { partId: 'RACK-02-U11', fan: 3, wearAt: 40_000, failAt: 130_000 };
+let _t0 = Date.now();
+
 function _simState(partId) {
   let s = _sim.get(partId);
   if (!s) {
@@ -372,30 +404,61 @@ function _simState(partId) {
     s = {
       age: 60 + Math.floor(Math.pow(hash01(partId, 7), 3) * 1000),
       base: 20 + hash01(partId, 13) * 45,
-      issue: hIssue < 0.012 ? 'fan' : hIssue < 0.03 ? 'hot' : null,
+      // ~1-2% of a 350-unit hall: 3 dead fans, 2 dead PSUs, 2 hot, 3 worn fans, 2 failing drives
+      issue: hIssue < 0.003 ? 'fan' : hIssue < 0.005 ? 'psu' : hIssue < 0.007 ? 'hot'
+        : hIssue < 0.015 ? 'fanWear' : hIssue < 0.017 ? 'drive' : null,
       deadFan: hash01(partId, 17),
+      wearDays: 4 + Math.floor(hash01(partId, 19) * 18),      // days until a worn part is expected to fail
+      smart: 40 + Math.floor(hash01(partId, 23) * 400),        // reallocated sectors on the failing drive
       temp: 30,
       rpms: []
     };
+    if (partId === DEMO_EVENT.partId) { s.issue = 'demo'; s.age = 410; }
     s.load = s.base;
     _sim.set(partId, s);
   }
   return s;
 }
 
+/** The live demo event's current phase: null (healthy), 'wear' or 'failed'. */
+function _demoPhase() {
+  const t = Date.now() - _t0;
+  return t >= DEMO_EVENT.failAt ? 'failed' : t >= DEMO_EVENT.wearAt ? 'wear' : null;
+}
+
 function simulatedTelemetry(partId) {
   const common = { voltage: null, source: 'sim', timestamp: null };
 
+  const comp = componentOf(partId);
+
+  // Power supply inside a unit: follows its host's load; one may have failed.
+  if (comp?.kind === 'psu') {
+    const host = comp.hostId ? _sim.get(comp.hostId) : null;
+    const s = _simState(partId);
+    const failed = !!host && host.issue === 'psu' && host.psuDead === comp.index - 1;
+    const share = host?.power && host.psuN ? host.power / Math.max(1, host.psuN - (host.issue === 'psu' ? 1 : 0)) : 300;
+    const load = failed ? 0 : Math.round(_clamp((share / 1400) * 100, 5, 99));
+    return {
+      ...common, condition: failed ? 'Critical' : 'Optimal', age: host?.age ?? s.age,
+      temp: (failed ? 24 : 34 + load * 0.25 + _step(0.6)).toFixed(1), load, rpm: null, rpms: [],
+      power: failed ? 0 : Math.round(share), voltage: failed ? 0 : 12.1,
+      forecast: failed ? 'no output — replace module' : 'nominal', anomaly: failed ? 0.9 : 0.05,
+    };
+  }
+
   // Fan module inside a unit: follows its host's fan speeds.
-  const fanOf = typeof partId === 'string' && partId.match(/^(.*)-FAN-(\d+)$/);
-  if (fanOf || (typeof partId === 'string' && partId.startsWith('FAN-'))) {
-    const hostId = fanOf ? fanOf[1] : null;
+  const fanOf = comp?.kind === 'fan' ? comp : null;
+  if (fanOf) {
+    const hostId = fanOf.hostId;
     const host = hostId && _sim.get(hostId);
     const s = _simState(partId);
     let rpm, maxRpm;
+    let worn = false;
     if (host && host.rpms.length) {
       const env = MODELS[_parts.get(hostId)?.modelId]?.env || DEFAULT_ENV;
-      rpm = host.rpms[(Number(fanOf[2]) - 1) % host.rpms.length];
+      const idx = (fanOf.index - 1) % host.rpms.length;
+      rpm = host.rpms[idx];
+      worn = host.wearIdx === idx && rpm > 0;
       maxRpm = env.fanMax || 18000;
       s.temp = _clamp(host.inlet ?? 24, 15, 50);
     } else {
@@ -405,12 +468,15 @@ function simulatedTelemetry(partId) {
     }
     const load = Math.min(100, Math.round((rpm / maxRpm) * 100));
     let condition = 'Optimal';
-    if (rpm > maxRpm * 0.9) condition = 'Warning';
+    if (rpm > maxRpm * 0.9 || worn) condition = 'Warning';
     if (rpm < maxRpm * 0.12) condition = 'Critical';
+    const days = host?.wearDays ?? 7;
     return {
-      ...common, condition, age: s.age, temp: s.temp.toFixed(1), load, rpm, rpms: [rpm],
-      power: Math.round(3 + load * 0.12), forecast: condition === 'Critical' ? 'predicted fan fault' : 'nominal airflow',
-      anomaly: condition === 'Critical' ? 0.5 : Math.round((0.05 + load / 400) * 100) / 100
+      ...common, condition, age: host?.age ?? s.age, temp: s.temp.toFixed(1), load, rpm, rpms: [rpm],
+      power: Math.round(3 + load * 0.12),
+      forecast: condition === 'Critical' ? 'fan stopped — replace module'
+        : worn ? `bearing wear — failure expected in ~${days} days` : 'nominal airflow',
+      anomaly: condition === 'Critical' ? 0.95 : worn ? 0.62 : Math.round((0.05 + load / 400) * 100) / 100
     };
   }
 
@@ -430,22 +496,59 @@ function simulatedTelemetry(partId) {
   const tFrac = _clamp((temp - env.tempBase) / Math.max(1, env.tempSpan), 0, 1);
   s.rpms = Array.from({ length: nFans }, () =>
     Math.max(0, Math.round(env.fanMin + tFrac * (env.fanMax - env.fanMin) + _step(env.fanMax * 0.015))));
-  let fanDead = false;
-  if (s.issue === 'fan' && nFans) { s.rpms[Math.floor(s.deadFan * nFans)] = 0; fanDead = true; }
+  // --- component faults (fans, power supplies, drives) ---
+  const faults = [];
+  const nPsu = model?.internals?.psus || 0;
+  s.psuN = nPsu;
+  s.power = power;
+  s.wearIdx = -1;
+  let issue = s.issue;
+  if (issue === 'demo') {
+    const phase = _demoPhase();
+    issue = phase === 'failed' ? 'fan' : phase === 'wear' ? 'fanWear' : null;
+    s.deadFan = (DEMO_EVENT.fan - 0.5) / Math.max(1, nFans);
+    s.wearDays = phase === 'wear' ? Math.max(1, Math.round(9 - ((Date.now() - _t0 - DEMO_EVENT.wearAt) / 10_000))) : s.wearDays;
+  }
+  if (issue === 'fan' && nFans) {
+    const i = Math.floor(s.deadFan * nFans);
+    s.rpms[i] = 0;
+    faults.push({ id: `${partId}-FAN-${i + 1}`, component: 'fan', index: i + 1, state: 'failed',
+      detail: `Fan ${i + 1} stopped (0 RPM); the other fans are running faster to compensate` });
+  }
+  if (issue === 'fanWear' && nFans) {
+    const i = Math.floor(s.deadFan * nFans);
+    s.wearIdx = i;
+    s.rpms[i] = Math.round(s.rpms[i] * 0.52 + _step(120));
+    faults.push({ id: `${partId}-FAN-${i + 1}`, component: 'fan', index: i + 1, state: 'degrading', etaDays: s.wearDays,
+      detail: `Fan ${i + 1} is running at about half the speed of its neighbours and slowing (bearing wear)` });
+  }
+  if (issue === 'psu' && nPsu >= 2) {
+    s.psuDead = Math.floor(s.deadFan * nPsu);
+    faults.push({ id: `${partId}-PSU-${s.psuDead + 1}`, component: 'psu', index: s.psuDead + 1, state: 'failed',
+      detail: `Power supply ${s.psuDead + 1} has no output; the unit is running on ${nPsu - 1} of ${nPsu} supplies` });
+  }
+  if (issue === 'drive' && ['server', 'storage'].includes(model?.category)) {
+    faults.push({ id: partId, component: 'drive', index: 1 + Math.floor(s.deadFan * 8), state: 'degrading', etaDays: s.wearDays,
+      detail: `Drive bay ${1 + Math.floor(s.deadFan * 8)}: ${s.smart} reallocated sectors and rising (SMART)` });
+  }
+  const failed = faults.some((f) => f.state === 'failed');
+  const degrading = faults.some((f) => f.state === 'degrading');
 
   let condition = 'Optimal';
-  if (temp > env.warnTemp) condition = 'Warning';
-  if (s.age > 900) condition = 'Maintenance Recommended';
-  if ((s.load > 90 && temp > env.warnTemp) || fanDead) condition = 'Critical';
-  const forecast = fanDead ? 'predicted fan fault'
-    : temp > env.warnTemp ? 'temp rising'
-      : s.age > 900 ? 'ageing hardware — schedule service' : 'stable';
-  const anomaly = Math.round(_clamp(0.04 + Math.max(0, temp - env.warnTemp + 8) / 40 + (fanDead ? 0.45 : 0), 0, 1) * 100) / 100;
+  if (temp > env.warnTemp || degrading) condition = 'Warning';
+  if (s.age > 900 && condition === 'Optimal') condition = 'Maintenance Recommended';
+  if ((s.load > 90 && temp > env.warnTemp) || failed) condition = 'Critical';
+  const forecast = failed ? faults.find((f) => f.state === 'failed').detail
+    : degrading ? `${faults[0].component === 'drive' ? 'drive' : 'fan'} failure expected in ~${faults[0].etaDays} days`
+      : temp > env.warnTemp ? 'temp rising'
+        : s.age > 900 ? 'ageing hardware — schedule service' : 'stable';
+  const anomaly = Math.round(_clamp(0.04 + Math.max(0, temp - env.warnTemp + 8) / 40
+    + (failed ? 0.45 : 0) + (degrading ? 0.3 : 0), 0, 1) * 100) / 100;
 
   return {
     ...common, condition, age: s.age, temp: temp.toFixed(1), load: Math.round(s.load),
     rpm: s.rpms.length ? s.rpms[0] : null, rpms: s.rpms, power,
-    voltage: power != null ? 12.1 : null, forecast, anomaly
+    voltage: power != null ? 12.1 : null, forecast, anomaly, faults
   };
 }
 

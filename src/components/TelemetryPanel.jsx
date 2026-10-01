@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getTelemetry, getMetricHistory, watchMetric, severity, getMetadata, getPartInfo, getConnections } from '../data/telemetry';
 import Sparkline from './Sparkline';
+import { CATEGORIES, issuesFor, useHealthVersion } from '../data/health';
 import { ago } from '../utils/format';
 
 const SOURCE_LABEL = { live: 'Live', stale: 'Stale', sim: 'Simulated' };
@@ -60,6 +61,7 @@ export default function TelemetryPanel({ partId, onClose, large = false, side = 
             {cur.source === 'stale' ? `${cur.condition} (last known)` : cur.condition}
           </span>
         </div>
+        <PartIssues partId={partId} />
         {cur.forecast && (
           <div className="data-row">
             <span>Forecast</span>
@@ -131,6 +133,24 @@ export default function TelemetryPanel({ partId, onClose, large = false, side = 
         )}
       </div>
     </div>
+  );
+}
+
+/** Open alerts / maintenance items for this part (or, for a unit, its components). */
+function PartIssues({ partId }) {
+  useHealthVersion();
+  const list = issuesFor(partId);
+  if (!list.length) return null;
+  return (
+    <ul className="part-issues">
+      {list.map((i) => (
+        <li key={i.key} className={`part-issue part-issue--${i.tone}`}>
+          <b>{CATEGORIES[i.category].short}</b> {i.title}
+          {i.downtime && <span className="tag tag--downtime">Downtime risk</span>}
+          {i.action && <span className="part-issue__action">{i.action}</span>}
+        </li>
+      ))}
+    </ul>
   );
 }
 

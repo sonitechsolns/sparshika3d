@@ -206,6 +206,7 @@ export default function RoomRacks({ room, racks, hidden, onSelectUnit, onHoverUn
     },
     onClick: (e) => {
       e.stopPropagation();
+      if (e.delta > 6) return;              // a drag (orbit / look around), not a click
       const u = unitOf(e);
       if (u) onSelectUnit?.(u);
     },
