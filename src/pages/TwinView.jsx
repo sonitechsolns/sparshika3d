@@ -16,7 +16,8 @@ import { AlertButtons, Toasts } from '../components/Notifications';
 import { componentOf, getPartInfo, startLiveTelemetry } from '../data/telemetry';
 import { startHealth } from '../data/health';
 import { CRACS, RACK_LAYOUT } from '../data/layout';
-import { Footprints, Hexagon, RotateCcw } from 'lucide-react';
+import { Footprints, RotateCcw } from 'lucide-react';
+import { LogoMark } from '../components/Logo';
 
 /**
  * Keeps a rendering fault from taking the whole page down: the 3D view shows a
@@ -160,7 +161,7 @@ export default function TwinView({ siteId = null, title = 'Sparshika 3D', badge 
       <header className={`app-header${open ? ' app-header--split' : ''}`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', pointerEvents: 'auto' }}>
           <Link to="/" aria-label="Sparshika home" style={{ display: 'flex', color: 'inherit' }}>
-            <Hexagon className="logo-icon" size={28} />
+            <LogoMark size={28} />
           </Link>
           <h1>{title}</h1>
           <span className="badge">{badge}</span>

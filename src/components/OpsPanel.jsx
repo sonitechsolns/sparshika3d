@@ -17,7 +17,7 @@ function IssueRow({ issue, onFocus }) {
         <span className={`issue__dot issue__dot--${issue.tone}`} aria-hidden="true" />
         <span className="issue__body">
           <span className="issue__title">{issue.title}</span>
-          <span className="issue__where">{issue.where}{issue.unitName ? ` · ${issue.unitName}` : ''}</span>
+          <span className="issue__where">{[issue.where, issue.unitName].filter(Boolean).join(' · ')}</span>
           <span className="issue__detail">{issue.detail}</span>
           <span className="issue__tags">
             {issue.downtime && <span className="tag tag--downtime" title={issue.downtimeReason || ''}>Downtime risk</span>}

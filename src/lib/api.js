@@ -57,6 +57,12 @@ export async function api(path, { method = 'GET', body } = {}) {
   const res = await apiFetch(apiUrl(path), { method, body: body !== undefined ? JSON.stringify(body) : undefined });
   let data = null;
   try { data = await res.json(); } catch { /* empty body */ }
-  if (!res.ok) throw new ApiError(res.status, detailText(data?.detail) || `Something went wrong (error ${res.status}).`);
+  if (!res.ok) {
+    // The accounts API isn't deployed on this server yet (older API behind /api).
+    if ((res.status === 404 || res.status === 405) && /^\/api\/v1\/(auth|orgs|invites)\b/.test(path) && data?.detail === 'Not Found') {
+      throw new ApiError(res.status, 'Sign-up isn’t switched on for this server yet. Contact Soni Tech Solutions and STS will set up your datacenter.');
+    }
+    throw new ApiError(res.status, detailText(data?.detail) || `Something went wrong (error ${res.status}).`);
+  }
   return data;
 }

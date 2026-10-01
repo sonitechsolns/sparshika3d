@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Hexagon } from 'lucide-react';
+import Logo from './Logo';
 import { useAuth } from '../lib/session';
 import { MOCK } from '../lib/api';
 
@@ -30,8 +30,7 @@ function PreviewBar() {
 export function Brand() {
   return (
     <Link to="/" className="brand" aria-label="Sparshika home">
-      <Hexagon size={24} aria-hidden="true" />
-      <span>Sparshika <small>by Soni Tech Solutions</small></span>
+      <Logo size={30} sub />
     </Link>
   );
 }
@@ -67,9 +66,16 @@ export default function SiteShell({ children }) {
       </header>
       {children}
       <footer className="footer">
-        <div className="wrap">
-          <span>© {new Date().getFullYear()} Soni Tech Solutions · Sparshika</span>
-          <span>Live 3D digital twins for datacenters</span>
+        <div className="wrap footer__inner">
+          <div className="footer__brand">
+            <Logo size={26} />
+            <p>Live 3D twins for datacenters. Sparshika is a product of Soni Tech Solutions (STS).</p>
+          </div>
+          <nav className="footer__links" aria-label="Footer">
+            <Link to="/demo">Demo hall</Link>
+            {me ? <Link to="/app">My datacenter</Link> : <><Link to="/login">Sign in</Link><Link to="/signup">Register</Link></>}
+          </nav>
+          <p className="footer__copy">© {new Date().getFullYear()} Soni Tech Solutions</p>
         </div>
       </footer>
     </div>
