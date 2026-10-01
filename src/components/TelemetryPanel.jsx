@@ -96,7 +96,7 @@ export default function TelemetryPanel({ partId, onClose, large = false, side = 
             <span>{isFan ? 'Speed (% of max)' : 'Load'}</span>
             <span>{Math.round(Number(cur.load))}%</span>
           </div>
-          <Sparkline values={hist.map((s) => s.load)} color="#4f46e5" />
+          <Sparkline values={hist.map((s) => s.load)} color="#2f6fe4" />
         </div>
         {cur.rpm != null && (
           <div className="metric-row">

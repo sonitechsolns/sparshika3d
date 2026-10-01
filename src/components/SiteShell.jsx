@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import Logo from './Logo';
+
+const STS_URL = 'https://soni-tech-solutions.vercel.app/';
 import { useAuth } from '../lib/session';
 import { MOCK } from '../lib/api';
 
@@ -69,13 +71,13 @@ export default function SiteShell({ children }) {
         <div className="wrap footer__inner">
           <div className="footer__brand">
             <Logo size={26} />
-            <p>Live 3D twins for datacenters. Sparshika is a product of Soni Tech Solutions (STS).</p>
+            <p>Live 3D twins for datacenters. Sparshika is a product of <a href={STS_URL} target="_blank" rel="noopener">Soni Tech Solutions (STS)</a>.</p>
           </div>
           <nav className="footer__links" aria-label="Footer">
             <Link to="/demo">Demo hall</Link>
             {me ? <Link to="/app">My datacenter</Link> : <><Link to="/login">Sign in</Link><Link to="/signup">Register</Link></>}
           </nav>
-          <p className="footer__copy">© {new Date().getFullYear()} Soni Tech Solutions</p>
+          <p className="footer__copy">© {new Date().getFullYear()} <a href={STS_URL} target="_blank" rel="noopener">Soni Tech Solutions</a></p>
         </div>
       </footer>
     </div>

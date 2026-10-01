@@ -7,6 +7,7 @@ import '@fontsource/inter/600.css'
 import '@fontsource/inter/700.css'
 import '@fontsource-variable/unbounded'
 import '@fontsource-variable/instrument-sans'
+import '@fontsource/tiro-devanagari-hindi/devanagari-400.css'
 import App from './App.jsx'
 
 createRoot(document.getElementById('root')).render(
