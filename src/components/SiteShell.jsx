@@ -58,12 +58,13 @@ export default function SiteShell({ children }) {
                 {me.user.is_sts_admin && <NavLink to="/admin" className={nl}>STS console</NavLink>}
                 <button type="button" className="btn btn--ghost btn--small" onClick={signOut}>Sign out</button>
               </>
-            ) : me === null ? (
+            ) : (
+              // also while the session check is still in flight (the API can be slow to wake)
               <>
                 <NavLink to="/login" className={nl}>Sign in</NavLink>
                 <Link to="/signup" className="btn btn--primary btn--small">Register your datacenter</Link>
               </>
-            ) : null}
+            )}
           </nav>
         </div>
       </header>
