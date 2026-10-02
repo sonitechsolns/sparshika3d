@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { computeLocalSpinAxis } from '../utils/fanAxis';
 import { getTelemetry, getMetadata, watchMetric, getMetricHistory } from '../data/telemetry';
-import Sparkline from './Sparkline';
+import Sparkline from '../components/Sparkline';
 
 // Map internal-component meshes → part_id (the join key to metadata + cloud
 // telemetry), so each component is inspectable exactly like GPU-PILOT-01.
