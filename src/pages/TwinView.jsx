@@ -184,7 +184,7 @@ export default function TwinView({ siteId = null, title = 'Sparshika 3D', badge 
         <SceneBoundary onReset={resetScene}>
         <Canvas key={canvasKey} camera={{ position: VIEWS.overview.pos, fov: 50 }} dpr={dpr}
           gl={{ powerPreference: 'high-performance', antialias: true }} onCreated={onCreated}>
-          <color attach="background" args={['#050b18']} />
+          <color attach="background" args={['#0f0e14']} />
           <PerformanceMonitor onDecline={() => setDpr(1)} onIncline={() => setDpr(1.5)} flipflops={3} onFallback={() => setDpr(1)} />
           <Suspense fallback={null}>
             <Datacenter selected={selected} setSelected={setSelected} showHeatmap={heatmap}

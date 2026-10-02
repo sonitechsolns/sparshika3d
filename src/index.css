@@ -1,15 +1,15 @@
 /* Inter is self-hosted via @fontsource (imported in main.jsx) — no Google Fonts request. */
 
 :root {
-  /* STS family palette (shared with SnapNexus): deep night blue, signal blue, amber. */
-  --bg-dark: #050b18;
-  --bg-panel: rgba(7, 17, 38, 0.78);
-  --bg-panel-solid: #071126;
-  --text-main: #f2f5fb;
-  --text-muted: #9dabc6;
-  --accent: #2f6fe4;
-  --accent-glow: rgba(47, 111, 228, 0.5);
-  --border: rgba(150, 180, 255, 0.12);
+  /* Sparshika palette: graphite with a violet undertone and an violet accent. */
+  --bg-dark: #0f0e14;
+  --bg-panel: rgba(22, 21, 30, 0.8);
+  --bg-panel-solid: #16151e;
+  --text-main: #f1f0f7;
+  --text-muted: #a6a3b8;
+  --accent: #8b7bff;
+  --accent-glow: rgba(139, 123, 255, 0.5);
+  --border: rgba(220, 214, 255, 0.12);
   --success: #10b981;
   --danger: #ef4444;
   --danger-bg: rgba(239, 68, 68, 0.1);

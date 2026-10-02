@@ -2,27 +2,31 @@
    index.css (dark, Inter, indigo accent) with the floor-vent teal. */
 
 :root {
-  /* STS family palette, shared with SnapNexus: night blue, signal blue and
-     amber. Status colours (green / amber / red LEDs) only ever mean status. */
-  --ink: #050b18;
-  --ink-2: #071126;
-  --ink-3: #0c1a36;
-  --brand: #f5b301;
-  --brand-rgb: 245, 179, 1;
-  --brand-ink: #1b1303;
-  --blue: #2f6fe4;
-  --blue-rgb: 47, 111, 228;
-  --steel: #b9c5dc;
+  /* Sparshika palette: graphite with a violet undertone, violet accent
+     (its own, distinct from SnapNexus's blue and amber), and the national
+     tricolour reserved for the Hindi mainline and the made-in-India mark.
+     Status colours (green / amber / red LEDs) only ever mean status. */
+  --ink: #0f0e14;
+  --ink-2: #16151e;
+  --ink-3: #1e1c29;
+  --brand: #9b8cff;
+  --brand-rgb: 155, 140, 255;
+  --brand-ink: #120e24;
+  --blue: #9b8cff;
+  --blue-rgb: 155, 140, 255;
+  --saffron: #ff9933;
+  --india-green: #138808;
+  --steel: #c9c6d9;
   --teal: var(--brand);               /* legacy name used by account pages */
-  --teal-dim: rgba(245, 179, 1, 0.1);
-  --surface: #0a1630;
-  --surface-2: #0c1a36;
-  --line: rgba(150, 180, 255, 0.1);
-  --line-strong: rgba(150, 180, 255, 0.2);
+  --teal-dim: rgba(155, 140, 255, 0.1);
+  --surface: #17151f;
+  --surface-2: #1e1c29;
+  --line: rgba(220, 214, 255, 0.09);
+  --line-strong: rgba(220, 214, 255, 0.18);
   --text-soft: var(--steel);
   --radius: 12px;
   --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
-  --display: 'Unbounded Variable', 'Unbounded', system-ui, sans-serif;
+  --display: 'Archivo Variable', 'Archivo', system-ui, sans-serif;
   --body: 'Instrument Sans Variable', 'Instrument Sans', system-ui, sans-serif;
 }
 
@@ -35,14 +39,14 @@ body.twin-mode { overflow: hidden; }
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(1100px 700px at 15% -5%, rgba(var(--blue-rgb), 0.28), transparent 60%),
-    radial-gradient(900px 600px at 100% 10%, rgba(var(--blue-rgb), 0.12), transparent 60%),
+    radial-gradient(1000px 640px at 12% -8%, rgba(var(--brand-rgb), 0.2), transparent 60%),
+    radial-gradient(800px 520px at 100% 6%, rgba(255, 153, 51, 0.07), transparent 60%),
     var(--ink);
   background-repeat: no-repeat;
   color: var(--text-main);
   font-family: var(--body);
 }
-.site h1, .site h2 { font-family: var(--display); font-weight: 600; }
+.site h1, .site h2 { font-family: var(--display); font-weight: 700; font-stretch: 88%; }
 
 .wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding-inline: 20px; }
 
@@ -64,7 +68,7 @@ body.twin-mode { overflow: hidden; }
 .btn:focus-visible, .field input:focus-visible, .field select:focus-visible, .nav__link:focus-visible, .tab:focus-visible {
   outline: 2px solid var(--teal); outline-offset: 2px; }
 .btn--primary { background: var(--brand); color: var(--brand-ink); }
-.btn--primary:hover { background: #ffc83d; }
+.btn--primary:hover { background: #b2a6ff; }
 .btn--ghost { background: transparent; color: var(--text-main); border-color: var(--line-strong); }
 .btn--ghost:hover { background: rgba(255, 255, 255, 0.05); }
 .btn--danger { background: transparent; color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); }
@@ -245,7 +249,7 @@ ul.trust { margin-top: 28px; }
 /* ================================================================ logo */
 .logo { display: inline-flex; align-items: center; gap: 10px; }
 .logo__text { display: flex; flex-direction: column; line-height: 1.05; }
-.logo__word { font-family: var(--display); font-weight: 600; font-size: 1.12rem; letter-spacing: -0.01em; color: #fff; }
+.logo__word { font-family: var(--display); font-weight: 700; font-stretch: 92%; font-size: 1.22rem; letter-spacing: -0.015em; color: #fff; }
 .logo--dark .logo__word { color: var(--ink); }
 .logo__sub { font-size: 0.7rem; color: var(--text-muted); font-weight: 500; margin-top: 3px; }
 .logo-mark { flex: none; display: block; }
@@ -343,40 +347,40 @@ ul.trust { margin-top: 28px; }
 
 /* ---------------------------------------------------------- touch rack toy */
 .trk { --uh: 9px; display: grid; gap: 14px; padding: 16px; border-radius: 18px;
-  background: linear-gradient(180deg, rgba(12, 26, 54, 0.85), rgba(7, 17, 38, 0.85)); border: 1px solid var(--line-strong);
+  background: linear-gradient(180deg, rgba(30, 28, 41, 0.88), rgba(19, 18, 26, 0.88)); border: 1px solid var(--line-strong);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45); backdrop-filter: blur(12px); }
 .trk-hall { display: grid; gap: 4px; }
 .trk-hall__row { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 4px; }
-.trk-hall__rack { height: 14px; border-radius: 3px; border: 1px solid rgba(150, 180, 255, 0.18); background: #0e1a33; cursor: pointer; padding: 0; position: relative; }
+.trk-hall__rack { height: 14px; border-radius: 3px; border: 1px solid rgba(220, 214, 255, 0.18); background: #1a1824; cursor: pointer; padding: 0; position: relative; }
 .trk-hall__rack::after { content: ''; position: absolute; right: 3px; top: 50%; width: 4px; height: 4px; margin-top: -2px; border-radius: 50%; background: #34d399; }
 .trk-hall__rack--warning::after { background: var(--brand); }
 .trk-hall__rack--critical::after { background: #ff3b5c; box-shadow: 0 0 6px #ff3b5c; }
-.trk-hall__rack:hover { border-color: rgba(150, 180, 255, 0.45); }
-.trk-hall__rack.is-on { border-color: var(--brand); background: #142446; }
+.trk-hall__rack:hover { border-color: rgba(220, 214, 255, 0.45); }
+.trk-hall__rack.is-on { border-color: var(--brand); background: #262238; }
 .trk-hall__rack:focus-visible, .trk-u:focus-visible, .trk-step:focus-visible, .trk-card__go:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 .trk-main { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 14px; align-items: start; }
-.trk-frame { background: #070e1d; border: 1px solid rgba(150, 180, 255, 0.16); border-radius: 8px; padding: 6px 10px 10px; }
+.trk-frame { background: #0b0a10; border: 1px solid rgba(220, 214, 255, 0.16); border-radius: 8px; padding: 6px 10px 10px; }
 .trk-frame__top { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 0.74rem; color: var(--text-muted); padding-bottom: 6px; }
 .trk-frame__top b { color: #fff; font-weight: 600; margin-right: 4px; }
 .trk-step { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--line-strong); background: none; color: var(--steel); cursor: pointer; font-size: 1rem; line-height: 1; }
-.trk-step:hover { color: #fff; border-color: rgba(150, 180, 255, 0.4); }
-.trk-rack { position: relative; height: calc(var(--n) * var(--uh)); border-left: 3px solid #1e2a44; border-right: 3px solid #1e2a44; }
+.trk-step:hover { color: #fff; border-color: rgba(220, 214, 255, 0.4); }
+.trk-rack { position: relative; height: calc(var(--n) * var(--uh)); border-left: 3px solid #2a2735; border-right: 3px solid #2a2735; }
 .trk-u {
   position: absolute; left: 0; right: 0; bottom: calc((var(--s) - 1) * var(--uh)); height: calc(var(--h) * var(--uh) - 1px);
-  border: 0; padding: 0; margin: 0; border-radius: 1px; background: #121c31; display: block;
+  border: 0; padding: 0; margin: 0; border-radius: 1px; background: #1b1926; display: block;
 }
 button.trk-u { cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s; }
 button.trk-u:hover, button.trk-u.is-sel { transform: translateX(-6px); box-shadow: 6px 0 0 rgba(var(--brand-rgb), 0.9), 0 0 0 1px rgba(var(--brand-rgb), 0.7); z-index: 2; filter: brightness(1.25); }
-.trk-u--blank { background: repeating-linear-gradient(0deg, #0b1324 0 2px, #0d1628 2px 4px); }
-.trk-u--server { background: linear-gradient(90deg, #1a2742 0 10%, transparent 10%), repeating-linear-gradient(90deg, #22314f 0 7px, #121c31 7px 9px) 0 0 / 70% 100% no-repeat, #121c31; background-position: 0 0, 18% 0, 0 0; }
-.trk-u--gpu { background: radial-gradient(circle, #2b3a5c 1px, transparent 1.6px) 0 0 / 5px 5px, #10192d; }
-.trk-u--storage { background: repeating-linear-gradient(90deg, #2a3758 0 3px, #111a2e 3px 11px); }
-.trk-u--switch { background: radial-gradient(circle, #3a4b70 0.9px, transparent 1.4px) 0 0 / 4px 4px, #0f1a2f; }
-.trk-u--ups { background: linear-gradient(90deg, #39465f 0 30%, #2c3850 30%); }
-.trk-u--patch { background: radial-gradient(circle, #2f6fe4 1px, transparent 1.6px) 0 0 / 6px 100%, #0d1526; }
-.trk-u--cable { background: repeating-linear-gradient(90deg, #070c17 0 5px, #121a2c 5px 7px); }
-.trk-u--kvm { background: #1c273f; }
+.trk-u--blank { background: repeating-linear-gradient(0deg, #13121a 0 2px, #16141f 2px 4px); }
+.trk-u--server { background: linear-gradient(90deg, #2a2638 0 10%, transparent 10%), repeating-linear-gradient(90deg, #34304a 0 7px, #1b1926 7px 9px) 0 0 / 70% 100% no-repeat, #1b1926; background-position: 0 0, 18% 0, 0 0; }
+.trk-u--gpu { background: radial-gradient(circle, #3b3654 1px, transparent 1.6px) 0 0 / 5px 5px, #181622; }
+.trk-u--storage { background: repeating-linear-gradient(90deg, #383350 0 3px, #18162a 3px 11px); }
+.trk-u--switch { background: radial-gradient(circle, #4a4468 0.9px, transparent 1.4px) 0 0 / 4px 4px, #17151f; }
+.trk-u--ups { background: linear-gradient(90deg, #4a4658 0 30%, #3a3648 30%); }
+.trk-u--patch { background: radial-gradient(circle, #6b8cff 1px, transparent 1.6px) 0 0 / 6px 100%, #141220; }
+.trk-u--cable { background: repeating-linear-gradient(90deg, #0a0910 0 5px, #1a1826 5px 7px); }
+.trk-u--kvm { background: #29263a; }
 .trk-led { position: absolute; right: 5px; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%; background: #34d399; box-shadow: 0 0 5px #34d399; }
 .trk-u--warning .trk-led { background: var(--brand); box-shadow: 0 0 6px var(--brand); }
 .trk-u--critical .trk-led { background: #ff3b5c; box-shadow: 0 0 8px #ff3b5c; animation: trkBlink 1s steps(2, end) infinite; }
@@ -384,7 +388,7 @@ button.trk-u:hover, button.trk-u.is-sel { transform: translateX(-6px); box-shado
 .trk-u--critical { box-shadow: inset 0 0 0 1px rgba(255, 59, 92, 0.55); }
 @keyframes trkBlink { 50% { opacity: 0.25; } }
 
-.trk-card { border-radius: 12px; border: 1px solid var(--line-strong); background: rgba(5, 11, 24, 0.7); padding: 14px; font-size: 0.86rem; display: flex; flex-direction: column; gap: 8px; }
+.trk-card { border-radius: 12px; border: 1px solid var(--line-strong); background: rgba(12, 11, 17, 0.75); padding: 14px; font-size: 0.86rem; display: flex; flex-direction: column; gap: 8px; }
 .trk-card--critical { border-color: rgba(255, 59, 92, 0.55); }
 .trk-card--warning { border-color: rgba(var(--brand-rgb), 0.5); }
 .trk-card--idle { justify-content: center; text-align: center; color: var(--text-muted); }
@@ -395,7 +399,7 @@ button.trk-u:hover, button.trk-u.is-sel { transform: translateX(-6px); box-shado
 .trk-pill--warning { background: rgba(var(--brand-rgb), 0.15); color: #ffd56b; }
 .trk-pill--critical { background: rgba(255, 59, 92, 0.16); color: #ff9aac; }
 .trk-card__kv { display: grid; gap: 4px; margin: 2px 0 0; }
-.trk-card__kv div { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px dashed rgba(150, 180, 255, 0.1); padding-bottom: 4px; }
+.trk-card__kv div { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px dashed rgba(220, 214, 255, 0.1); padding-bottom: 4px; }
 .trk-card__kv dt { color: var(--text-muted); }
 .trk-card__kv dd { margin: 0; color: #fff; font-variant-numeric: tabular-nums; text-align: right; }
 .trk-card__faults { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
@@ -432,3 +436,16 @@ button.trk-u:hover, button.trk-u.is-sel { transform: translateX(-6px); box-shado
   .trk { --uh: 8px; padding: 12px; }
   .trk-card { padding: 10px; font-size: 0.8rem; }
 }
+
+/* ======================================== tricolour mainline + made in India */
+.home-hero h1.home-hero__hi {
+  background: linear-gradient(90deg, #ff9933 0%, #ffb366 26%, #ffffff 44%, #ffffff 58%, #3fae2a 78%, #138808 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+@media (forced-colors: active) { .home-hero h1.home-hero__hi { background: none; color: CanvasText; } }
+.footer__base { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding-top: 16px; border-top: 1px solid var(--line); }
+.footer__base .footer__copy { grid-column: auto; }
+.made-in { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; color: #fff; font-size: 0.9rem; }
+.india-flag { display: block; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15); }

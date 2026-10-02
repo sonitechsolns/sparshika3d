@@ -6,15 +6,15 @@ import React from 'react';
  * hardware (sparsha, Sanskrit for touch).
  *
  * tone="light" draws for dark backgrounds, "dark" for light ones, "tile" is
- * the app-icon version on an amber square.
+ * the app-icon version on a violet square.
  */
 export function LogoMark({ size = 28, tone = 'light', title }) {
-  const ink = tone === 'dark' || tone === 'tile' ? '#050b18' : '#E8EEF6';
-  const dot = tone === 'tile' ? '#050b18' : '#f5b301';
+  const ink = tone === 'dark' || tone === 'tile' ? '#120e24' : '#E8EEF6';
+  const dot = tone === 'tile' ? '#120e24' : '#9b8cff';
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" role={title ? 'img' : undefined}
       aria-hidden={title ? undefined : true} aria-label={title} className="logo-mark">
-      {tone === 'tile' && <rect width="32" height="32" rx="7" fill="#f5b301" />}
+      {tone === 'tile' && <rect width="32" height="32" rx="7" fill="#9b8cff" />}
       <path d="M22 7.5H10.5a4.25 4.25 0 0 0 0 8.5h11a4.25 4.25 0 0 1 0 8.5H4" fill="none" stroke={ink}
         strokeWidth="3" strokeLinecap="round" />
       <circle className="logo-mark__dot" cx={tone === 'tile' ? 27.2 : 27.6} cy="7.5" r={tone === 'tile' ? 2.2 : 2.4} fill={dot} />

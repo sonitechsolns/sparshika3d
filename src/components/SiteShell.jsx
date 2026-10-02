@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import Logo from './Logo';
+import IndiaFlag from './IndiaFlag';
 
 const STS_URL = 'https://soni-tech-solutions.vercel.app/';
 import { useAuth } from '../lib/session';
@@ -77,7 +78,10 @@ export default function SiteShell({ children }) {
             <Link to="/demo">Demo hall</Link>
             {me ? <Link to="/app">My datacenter</Link> : <><Link to="/login">Sign in</Link><Link to="/signup">Register</Link></>}
           </nav>
-          <p className="footer__copy">© {new Date().getFullYear()} <a href={STS_URL} target="_blank" rel="noopener">Soni Tech Solutions</a></p>
+          <div className="footer__base">
+            <p className="footer__copy">© {new Date().getFullYear()} <a href={STS_URL} target="_blank" rel="noopener">Soni Tech Solutions</a></p>
+            <p className="made-in"><IndiaFlag /> Proudly made in India</p>
+          </div>
         </div>
       </footer>
     </div>
