@@ -99,6 +99,9 @@ export function buildRoom(racks) {
 
   registerParts(units.filter((u) => u.partId).map(({ partId, modelId, rackId, startU, heightU }) =>
     ({ partId, modelId, rackId, startU, heightU })));
+  // Live fan parts reported by the agent belong to the unit in the same slot.
+  registerParts(units.flatMap((u) => (u.fans || []).map((fanId, i) =>
+    ({ partId: fanId, hostId: u.partId, kind: 'fan', index: i + 1, rackId: u.rackId, startU: u.startU, heightU: u.heightU }))));
 
   return { units, byPart, batches, acts, leds, hits };
 }

@@ -4,7 +4,7 @@ import React from 'react';
  * Tiny inline-SVG sparkline — no dependencies. Draws a filled line chart of a
  * recent metric series, auto-scaled to its own min/max.
  */
-export default function Sparkline({ values, color = '#4f46e5', width = 150, height = 26 }) {
+export default function Sparkline({ values, color = '#8b7bff', width = 150, height = 26 }) {
   const pts = (values || []).filter((v) => v != null && !Number.isNaN(v));
   if (pts.length < 2) {
     return <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" />;

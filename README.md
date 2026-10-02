@@ -93,6 +93,30 @@ The telemetry panel lists what the selected unit is plugged into. The
 **View** dock flies to Overview, Cold aisle, Hot aisle (rear cabling) or
 Overhead (containment); dragging cancels a fly-to.
 
+## Hall health, alerts and Walk mode
+
+`src/data/health.js` scores every unit every 3 s and sorts what it finds into
+four lists: **Failed** (a fan or power supply has stopped, a unit is critical
+or has stopped reporting), **At risk of downtime** (a fan wearing out, a drive
+logging SMART errors, a unit running hot, or a unit running on its last power
+supply), **Maintenance suggested** and **Ageing hardware** (warranty ending).
+
+- **Alerts** (header) opens the Hall health drawer: Alerts, Maintenance and an
+  Activity log. The bell counts unread events; new failures, warnings and
+  clears also pop up as notifications.
+- **Click any item** and the camera flies to it. A whole unit is pulled out; a
+  fan or power supply opens its unit with that part pulsing red and labelled.
+  Rapid clicks just retarget, and only one unit is ever drawn in detail.
+- **Walk** steps into the hall at eye level, street-view style: drag to look,
+  click the floor arrows or press ↑/↓ to walk, ←/→ to turn, scroll to zoom.
+  Markers sit on every failing or at-risk unit, with labels on the nearest
+  ones, and the minimap shows where you are.
+- In the demo, RACK-02-U11 plays out a failure live: fan 3 starts wearing after
+  ~40 s and stops at ~130 s, so the notifications can be seen working.
+
+Rendering safety: adaptive resolution, WebGL context-loss recovery and an error
+boundary that pauses only the 3D view (with a reload button) if it ever fails.
+
 ## Layout
 
 | Path | What |

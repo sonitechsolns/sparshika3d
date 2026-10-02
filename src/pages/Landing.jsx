@@ -1,76 +1,151 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, Cpu, ShieldCheck, Users } from 'lucide-react';
 import SiteShell from '../components/SiteShell';
+import TouchRack from '../components/TouchRack';
 import { asset } from '../data/telemetry';
 import { useAuth } from '../lib/session';
 
-const STEPS = [
-  { t: 'Register your datacenter', d: 'Create an owner account with your company and first site. It takes two minutes.' },
-  { t: 'STS verifies you', d: 'Confirm your email and request activation. Soni Tech Solutions reviews and approves your organisation.' },
-  { t: 'Connect with a one-time code', d: 'Generate a 30-minute code and run one install command on a server in your hall. The agent does the rest.' },
-  { t: 'Invite your team', d: 'Add admins, operators and read-only viewers, wherever they sit, up to your plan’s seats.' },
+const SHOWCASE = [
+  {
+    img: 'home-alerts.jpg',
+    alt: 'The Hall health drawer listing failed parts and parts at risk, beside the 3D hall',
+    t: 'The faulty part, not just the rack',
+    d: 'Failed parts and the parts likely to fail next, each with the reason and the fix. Anything that could take a server down is flagged as a downtime risk, and one click flies you to it.',
+  },
+  {
+    img: 'home-walk.jpg',
+    alt: 'Walk mode: an eye-level view down a cold aisle with markers on failing units and a floor map',
+    t: 'Walk the floor from anywhere',
+    d: 'Step into the hall at eye level, like street view. Every failing unit carries a marker, and a floor map shows where you are standing.',
+  },
+  {
+    img: 'home-cabling.jpg',
+    alt: 'The hot aisle with black power cords, blue copper and yellow fibre running to every rack',
+    t: 'Every cable, traced',
+    d: 'Power, copper and fibre drawn rack by rack, kept apart the way your hall is built, so you know what a unit is plugged into before anyone touches it.',
+  },
 ];
 
-const FEATURES = [
-  { icon: Cpu, t: 'Read from the hardware itself', d: 'The on-prem agent polls server management controllers (IPMI) and network gear, so temperatures, fan speeds, power and faults come from the source, not from someone’s spreadsheet.' },
-  { icon: Activity, t: 'Catch trouble before it trips', d: 'An on-site model scores every part for anomalies and flags slowing fans, rising temperatures and ageing hardware, so problems show amber long before they turn red.' },
-  { icon: Users, t: 'One view for everyone', d: 'Engineers, managers and auditors open the same live 3D hall from any browser, each with the access their role allows.' },
+const STEPS = [
+  { t: 'Register your datacenter', d: 'Create an owner account with your company and first site.' },
+  { t: 'STS verifies you', d: 'Confirm your email and request activation. Soni Tech Solutions reviews every organisation.' },
+  { t: 'Connect your hall', d: 'Run one install command with a 30-minute code. The agent reads your servers’ management controllers (IPMI) and network gear.' },
+  { t: 'Invite your team', d: 'Admins, operators and read-only viewers, wherever they sit, up to your plan’s seats.' },
 ];
 
 const ROLES = [
-  { r: 'Owner', d: 'Your organisation’s account holder. Manages everything, can’t be removed.' },
-  { r: 'Admin', d: 'Invites the team, connects agents, adds sites.' },
-  { r: 'Operator', d: 'Watches the twin and agent health day to day.' },
-  { r: 'Viewer', d: 'Read-only access to the live twin, for managers and stakeholders.' },
+  ['Owner', 'Your organisation’s account holder. Manages everything.'],
+  ['Admin', 'Invites the team, connects agents, adds sites.'],
+  ['Operator', 'Watches the hall and the agents day to day.'],
+  ['Viewer', 'Read-only access, for managers and auditors.'],
 ];
 
 const TRUST = [
-  { t: 'Outbound only', d: 'The agent calls out over HTTPS. You open no inbound ports.' },
-  { t: 'One-time codes', d: 'Enrolment codes expire in 30 minutes and work once. No keys travel by email.' },
-  { t: 'Keys locked to a site', d: 'Each agent’s key can only write its own site, and you can revoke it in one click.' },
-  { t: 'Your hall only', d: 'Every request is checked against your organisation. Nobody else can see your racks.' },
+  ['Outbound only', 'The agent calls out over HTTPS. You open no inbound ports.'],
+  ['One-time codes', 'Enrolment codes expire in 30 minutes and work once.'],
+  ['Keys locked to a site', 'An agent’s key can only write its own site, and you can revoke it in one click.'],
+  ['Your hall only', 'Every request is checked against your organisation.'],
 ];
+
+/**
+ * A soft amber light that follows the pointer, as on SnapNexus. Fine pointers
+ * only; with reduced motion (or on touch screens) it rests behind the hero.
+ */
+function CursorGlow() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      || !window.matchMedia('(pointer: fine)').matches;
+    if (still) { el.classList.add('glow--rest'); return undefined; }
+    let tx = window.innerWidth * 0.7, ty = window.innerHeight * 0.3, x = tx, y = ty, raf = 0;
+    const loop = () => {
+      x += (tx - x) * 0.08; y += (ty - y) * 0.08;
+      el.style.transform = `translate3d(${x - 300}px, ${y - 300}px, 0)`;
+      raf = Math.abs(tx - x) + Math.abs(ty - y) > 0.5 ? requestAnimationFrame(loop) : 0;
+    };
+    const move = (e) => { tx = e.clientX; ty = e.clientY; if (!raf) raf = requestAnimationFrame(loop); };
+    window.addEventListener('pointermove', move, { passive: true });
+    raf = requestAnimationFrame(loop);
+    return () => { window.removeEventListener('pointermove', move); cancelAnimationFrame(raf); };
+  }, []);
+  return <div className="glow" aria-hidden="true"><div ref={ref} className="glow__orb" /></div>;
+}
+
+/** Sections drift up a few pixels as they come into view (skipped with reduced motion). */
+function useReveal() {
+  useEffect(() => {
+    const els = [...document.querySelectorAll('[data-reveal]')];
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) return undefined;
+    document.documentElement.classList.add('reveal-ready');
+    const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+      if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); }
+    }), { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    els.forEach((el) => io.observe(el));
+    return () => { io.disconnect(); document.documentElement.classList.remove('reveal-ready'); };
+  }, []);
+}
 
 export default function Landing() {
   const { me } = useAuth();
+  useReveal();
+  const primary = me ? { to: '/app', label: 'Open my datacenter' } : { to: '/signup', label: 'Register your datacenter' };
   return (
     <SiteShell>
-      <main>
-        <div className="wrap hero">
-          <div>
-            <span className="eyebrow">Datacenter digital twin</span>
-            <h1>See every rack, fan and fault in your datacenter, live in 3D.</h1>
-            <p className="lead">
-              Sparshika reads health straight from your servers, switches and power gear and streams it to a
-              3D model of your hall that your whole team can open from anywhere.
-            </p>
-            <div className="hero__cta">
-              {me ? (
-                <Link to="/app" className="btn btn--primary">Open my datacenter</Link>
-              ) : (
-                <Link to="/signup" className="btn btn--primary">Register your datacenter</Link>
-              )}
-              <Link to="/demo" className="btn btn--ghost">Explore the demo hall</Link>
+      <CursorGlow />
+      <main className="home">
+        <section className="home-hero">
+          <div className="wrap home-hero__grid">
+            <div className="home-hero__text">
+              <h1 lang="hi" className="home-hero__hi">हर मशीन, बस एक स्पर्श दूर।</h1>
+              <p className="home-hero__en">Every machine in your datacenter, one touch away.</p>
+              <p className="home-hero__lead">
+                Sparshika builds a live 3D copy of your server hall from the hardware itself. When a fan slows
+                down or a power supply dies, you see which one, in which rack, and fly straight to it.
+              </p>
+              <div className="home-hero__cta">
+                <Link to={primary.to} className="btn btn--primary btn--lg">{primary.label}</Link>
+                <Link to="/demo" className="btn btn--ghost btn--lg">Walk the demo hall</Link>
+              </div>
+              <p className="home-hero__name"><span lang="sa">स्पर्श</span> Sparsha means touch.</p>
             </div>
+            <TouchRack />
           </div>
-          <figure className="hero__shot">
-            <img src={asset('hero-hall.jpg')} alt="The Sparshika 3D twin: a cold aisle of server racks with status lights on every unit and overhead power, copper and fibre runs" />
-            <figcaption className="hero__chip">
-              <span className="dot dot--ok" />
-              <span>Demo hall: <b>22</b> racks, a status light on every unit</span>
+          <figure className="home-shot" data-reveal>
+            <img src={asset('home-hero.jpg')} width="1600" height="1000"
+              alt="The Sparshika twin with a server pulled out of its rack, its stopped fan glowing red, and the fan’s live readings in a side panel" />
+            <figcaption>
+              <span className="dot dot--crit" aria-hidden="true" />
+              Demo hall: fan 5 in RACK-18-U23 has stopped. Sparshika opened the server and lit the fan red.
             </figcaption>
           </figure>
-        </div>
+        </section>
 
-        <section className="section">
+        <section className="home-sec" aria-labelledby="sees">
           <div className="wrap">
-            <h2>From sign-up to a live hall in four steps</h2>
-            <p className="sub">You stay in control at every step, and STS verifies every organisation before any data flows.</p>
-            <ol className="steps">
+            <h2 id="sees" data-reveal>What your team sees</h2>
+            <div className="showcase">
+              {SHOWCASE.map((s) => (
+                <article className="showcase__row" key={s.t} data-reveal>
+                  <img src={asset(s.img)} alt={s.alt} loading="lazy" width="1600" height="1000" />
+                  <div>
+                    <h3>{s.t}</h3>
+                    <p>{s.d}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="home-sec" aria-labelledby="how">
+          <div className="wrap">
+            <h2 id="how" data-reveal>From sign-up to a live hall</h2>
+            <ol className="timeline" data-reveal>
               {STEPS.map((s, i) => (
-                <li className="step" key={s.t}>
-                  <span className="step__n">STEP {i + 1}</span>
+                <li key={s.t}>
+                  <span className="timeline__n" aria-hidden="true">{i + 1}</span>
                   <h3>{s.t}</h3>
                   <p>{s.d}</p>
                 </li>
@@ -79,47 +154,31 @@ export default function Landing() {
           </div>
         </section>
 
-        <section className="section">
-          <div className="wrap">
-            <h2>Built for the people who keep the lights green</h2>
-            <div className="features">
-              {FEATURES.map(({ icon: Icon, t, d }) => (
-                <div className="feature" key={t}>
-                  <h3><Icon size={18} aria-hidden="true" /> {t}</h3>
-                  <p>{d}</p>
-                </div>
-              ))}
+        <section className="home-sec" aria-label="Access and security">
+          <div className="wrap home-cols">
+            <div data-reveal>
+              <h2>The right access for every seat</h2>
+              <dl className="defs">
+                {ROLES.map(([k, v]) => (<div key={k}><dt>{k}</dt><dd>{v}</dd></div>))}
+              </dl>
+            </div>
+            <div data-reveal>
+              <h2>Secure by design</h2>
+              <dl className="defs">
+                {TRUST.map(([k, v]) => (<div key={k}><dt>{k}</dt><dd>{v}</dd></div>))}
+              </dl>
             </div>
           </div>
         </section>
 
-        <section className="section">
+        <section className="home-end" data-reveal>
           <div className="wrap">
-            <h2>The right access for every seat</h2>
-            <p className="sub">Plans include a number of seats. Your admins invite people and choose their role, with no request to STS needed.</p>
-            <div className="roles">
-              {ROLES.map((r) => <div className="role" key={r.r}><b>{r.r}</b><span>{r.d}</span></div>)}
-            </div>
-          </div>
-        </section>
-
-        <section className="section">
-          <div className="wrap">
-            <h2><ShieldCheck size={22} style={{ verticalAlign: '-3px', color: 'var(--teal)' }} aria-hidden="true" /> Secure by design</h2>
-            <ul className="trust">
-              {TRUST.map((t) => <li key={t.t}><b>{t.t}</b>{t.d}</li>)}
-            </ul>
-          </div>
-        </section>
-
-        <section className="section">
-          <div className="wrap">
-            <div className="cta-band">
-              <div>
-                <h2>Ready to see your hall?</h2>
-                <p className="sub">Register now. You can explore the demo while STS reviews your organisation.</p>
-              </div>
-              <Link to={me ? '/app' : '/signup'} className="btn btn--primary">{me ? 'Open my datacenter' : 'Register your datacenter'}</Link>
+            <p lang="hi" className="home-end__hi">स्पर्श से शुरू करें।</p>
+            <h2>See your own hall in 3D.</h2>
+            <p>Register now. You can walk the demo hall while STS reviews your organisation.</p>
+            <div className="home-hero__cta">
+              <Link to={primary.to} className="btn btn--primary btn--lg">{primary.label}</Link>
+              <Link to="/demo" className="btn btn--ghost btn--lg">Walk the demo hall</Link>
             </div>
           </div>
         </section>
